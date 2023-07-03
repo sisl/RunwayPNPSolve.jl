@@ -33,14 +33,7 @@ runway_corners = Point3d[
     [100, -5, 0],
     [100,  5, 0]] ./ 10
 
-C_t_true = Point3d([-100, 0, 10])
 R_t_true = RotY{Float32}(π/2)
-
-Cam_translation = AffineMap(R_t_true, C_t_true)
-cam_transform = PerspectiveMap() ∘ inv(Cam_translation)
-projected_points = map(cam_transform, runway_corners)
-projected_points_global = map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), projected_points)
-
 
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
@@ -51,6 +44,18 @@ rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggles = [Toggle(rhs_grid[i, 1]; active=true) for i in 1:4]
 toggle_labels = let labels = ["Front left", "Front right", "Back left", "Back right"]
     [Label(rhs_grid[i, 2], labels[i]) for i in 1:4]
+end
+scenario_menu = Menu(rhs_grid[5, 1:2]; options=["near", "mid", "far"], default="mid")
+C_t_true = lift(scenario_menu.selection) do menu
+    menu == "near" && return Point3d([-10, 0, 10])
+    menu == "mid"  && return Point3d([-100, 0, 10])
+    menu == "far"  && return Point3d([-500, 0, 10])
+end
+Cam_translation = lift(C_t_true) do C_t_true; AffineMap(R_t_true, C_t_true) end
+cam_transform = lift(Cam_translation) do Cam_translation; PerspectiveMap() ∘ inv(Cam_translation) end
+projected_points = lift(cam_transform) do cam_transform; map(cam_transform, runway_corners) end
+projected_points_global = lift(Cam_translation, projected_points) do Cam_translation, projected_points
+    map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), projected_points)
 end
 # rhs_grid[1, 1] = grid!(hcat(toggles, toggle_labels); tellheight=false, tellwidth=true)
 #
@@ -66,16 +71,19 @@ arrows!(scene,
 surface!(scene, getindex.(runway_corners, 1),
                 getindex.(runway_corners, 2),
                 getindex.(runway_corners, 3))
-for p in runway_corners
-    lines!(scene, [p, C_t_true])
+corner_lines = [lift(C_t_true) do C_t_true
+                    [p, C_t_true]
+                    end for p in runway_corners]
+for l in corner_lines
+    lines!(scene, l)
 end
 scatter!(scene, projected_points_global)
 # update_cam!(scene.scene, Array(C_t_true), Float32[0, 0, 0])
-perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d
+perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d;
     Int[a;b;c;d]
 end
-perturbed_locations = lift(slidergrid.sliders[1].value, perturbation_mask) do σ, mask
-    pts = Point3d.([perturb_x1(exp(σ); mask=mask) for _ in 1:100])
+perturbed_locations = lift(projected_points, slidergrid.sliders[1].value, perturbation_mask) do projected_points, σ, mask
+    pts = Point3d.([perturb_x1(projected_points, exp(σ); mask=mask) for _ in 1:100])
     filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
            pts) |> collect
 end
