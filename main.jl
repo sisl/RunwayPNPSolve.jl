@@ -41,11 +41,13 @@ slidergrid =  SliderGrid(fig[2, 1],
     (label="Error scale [log]", range = -10:0.1:-1, startvalue=-3, format=x->string(round(exp(x); sigdigits=2)))
 )
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
-toggles = [Toggle(rhs_grid[i, 1]; active=true) for i in 1:4]
+toggle_grid = GridLayout(rhs_grid[1, 1])
+toggles = [Toggle(toggle_grid[i, 1]; active=true) for i in 1:4]
 toggle_labels = let labels = ["Front left", "Front right", "Back left", "Back right"]
-    [Label(rhs_grid[i, 2], labels[i]) for i in 1:4]
+    [Label(toggle_grid[i, 2], labels[i]) for i in 1:4]
 end
-scenario_menu = Menu(rhs_grid[5, 1:2]; options=["near", "mid", "far"], default="mid")
+scenario_menu = Menu(toggle_grid[5, 1:2]; options=["near", "mid", "far"], default="mid")
+#
 C_t_true = lift(scenario_menu.selection) do menu
     menu == "near" && return Point3d([-10, 0, 10])
     menu == "mid"  && return Point3d([-100, 0, 10])
@@ -57,6 +59,13 @@ projected_points = lift(cam_transform) do cam_transform; map(cam_transform, runw
 projected_points_global = lift(Cam_translation, projected_points) do Cam_translation, projected_points
     map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), projected_points)
 end
+#
+projected_points_rect = lift(projected_points) do projected_points
+    projected_points[[1, 2, 4, 3, 1]]
+end
+cam_view_ax = Axis(rhs_grid[2, 1])
+cam_view = lines!(cam_view_ax, projected_points_rect)
+#
 # rhs_grid[1, 1] = grid!(hcat(toggles, toggle_labels); tellheight=false, tellwidth=true)
 #
 #
@@ -89,76 +98,3 @@ perturbed_locations = lift(projected_points, slidergrid.sliders[1].value, pertur
 end
 scatter!(scene, perturbed_locations; color=:red)
 scene
-
-# add_dim(x::AbstractArray) = reshape(x, (size(x)...,1))
-# add_dim2(x::AbstractArray) = reshape(x, size(x)[1], 1, size(x)[2])
-# OpenCV.solvePnP(stack(Array.(runway_corners)) |> add_dim2,
-#                 stack(Array.(projected_points_global)) |> add_dim2,
-#                 Matrix{Float32}(I(3)) |> add_dim,
-#                 zeros(Float32, 4, 1, 1)
-#                 )
-
-
-# scene = Scene(backgroundcolor=:gray)
-# lines!(scene, Rect2f(-1, -1, 2, 2), linewidth=5, color=:black)
-# cam3d!(scene)
-# scene
-
-
-# OpenCV.solveP3P(rand(Float32, 3, 3, 3),
-#                 rand(Float32, 2, 2, 2),
-#                 Matrix{Float32}(I(3)) |> add_dim,
-#                 zeros(Float32, 4, 1, 1),
-#                 OpenCV.SOLVEPNP_P3P)
-
-
-"""
-the function we ultimately want is the following:
-input:
-- real object locations (3d)
-- pixel locations (2d)
-- rotation
-- initial guess
-- (distance from runway?)
-output:
-- 3d pose estimate
-
-We can either minimize in the pixel space, or in the world space. (Maybe it doesn't matter either way?)
-"""
-
-
-# function pnp(world_pts, pixel_locations;
-#              gt_rot=Rotations.IdentityMap(),
-#              initial_guess = Point3f([-100, 0, 30]))
-
-#     # C_t_true = Point3f([-100, 0, 30]) ./ 10
-#     rotXtoZ = RotY{Float32}(π/2)
-
-#     f(C_t) = begin
-#         # Cam_translation = AffineMap(rotXtoZ ∘ gt_rot, Point3f(C_t))
-#         Cam_translation = AffineMap(rotXtoZ, Point3f(C_t))
-#         cam_transform = PerspectiveMap() ∘ inv(Cam_translation)
-#         projected_points = map(cam_transform, world_pts)
-#         # projected_points_global = map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float32[0;0;1]),
-#         #                               projected_points)
-#         return sum(norm.(projected_points .- pixel_locations))
-#     end
-
-#     sol = optimize(f, Array(initial_guess))
-#     return sol.minimizer
-# end
-pos_est = pnp(runway_corners, projected_points;
-              initial_guess = Array(C_t_true)+1*randn(3))
-
-# central_fdm(5, 1; factor=1e-8/eps())(perturb_x1, 0)
-
-
-
-# measure x-sensititity for back left point
-# using Finite Difference
-
-
-# sol.minimizer
-
-
-# experiment 1
