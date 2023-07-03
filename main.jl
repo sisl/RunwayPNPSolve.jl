@@ -38,21 +38,22 @@ R_t_true = RotY{Float32}(π/2)
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
 slidergrid =  SliderGrid(fig[2, 1],
-    (label="Error scale [log]", range = -10:0.1:-1, startvalue=-3, format=x->string(round(exp(x); sigdigits=2)))
+    (label="Error scale [log]", range = -10:0.1:-1, startvalue=-7, format=x->string(round(exp(x); sigdigits=2)))
 )
 σ = lift(slidergrid.sliders[1].value) do x; exp(x) end
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
-toggles = [Toggle(toggle_grid[i, 1]; active=true) for i in 1:4]
+toggles = [Toggle(toggle_grid[i, 2]; active=true) for i in 1:4]
 toggle_labels = let labels = ["Front left", "Front right", "Back left", "Back right"]
-    [Label(toggle_grid[i, 2], labels[i]) for i in 1:4]
+    [Label(toggle_grid[i, 1], labels[i]) for i in 1:4]
 end
-scenario_menu = Menu(toggle_grid[5, 1:2]; options=["near", "mid", "far"], default="mid")
+Label(toggle_grid[5, 1], "Scenario:")
+scenario_menu = Menu(toggle_grid[5, 2]; options=["near (10m)", "mid (100m)", "far (500m)"], default="mid (100m)")
 #
 C_t_true = lift(scenario_menu.selection) do menu
-    menu == "near" && return Point3d([-10, 0, 10])
-    menu == "mid"  && return Point3d([-100, 0, 10])
-    menu == "far"  && return Point3d([-500, 0, 10])
+    menu == "near (10m)" && return Point3d([-10, 0, 10])
+    menu == "mid (100m)"  && return Point3d([-100, 0, 10])
+    menu == "far (500m)"  && return Point3d([-500, 0, 10])
 end
 Cam_translation = lift(C_t_true) do C_t_true; AffineMap(R_t_true, C_t_true) end
 cam_transform = lift(Cam_translation) do Cam_translation; PerspectiveMap() ∘ inv(Cam_translation) end
@@ -78,7 +79,11 @@ meshscatter!(cam_view_ax, projected_points_2d[4], marker=Makie.Circle(Point2d(0,
 # rhs_grid[1, 1] = grid!(hcat(toggles, toggle_labels); tellheight=false, tellwidth=true)
 #
 #
-cam3d!(scene; far=1e9)
+cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
+       mouse_rotationspeed = 5f-1,
+       mouse_translationspeed = 0.1f0,
+       mouse_zoomspeed = 5f-1,
+       )
 lines!(scene, runway_corners[[1, 2, 4, 3, 1]])
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
 arrows!(scene,
@@ -96,7 +101,7 @@ for l in corner_lines
     lines!(scene, l)
 end
 scatter!(scene, projected_points_global)
-# update_cam!(scene.scene, Array(C_t_true), Float32[0, 0, 0])
+update_cam!(scene.scene, Array(C_t_true[]).-[20.,0,0], Float32[0, 0, 0])
 perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d;
     Int[a;b;c;d]
 end
