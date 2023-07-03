@@ -45,8 +45,16 @@ projected_points_global = map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float6
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
 slidergrid =  SliderGrid(fig[2, 1],
-    (label="Error scale [log]", range = -10:0.1:-1, startvalue=-3),
+    (label="Error scale [log]", range = -10:0.1:-1, startvalue=-3, format=x->string(round(exp(x); sigdigits=2)))
 )
+rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
+toggles = [Toggle(rhs_grid[i, 1]; active=true) for i in 1:4]
+toggle_labels = let labels = ["Front left", "Front right", "Back left", "Back right"]
+    [Label(rhs_grid[i, 2], labels[i]) for i in 1:4]
+end
+# rhs_grid[1, 1] = grid!(hcat(toggles, toggle_labels); tellheight=false, tellwidth=true)
+#
+#
 cam3d!(scene; far=1e9)
 lines!(scene, runway_corners[[1, 2, 4, 3, 1]])
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
@@ -63,8 +71,11 @@ for p in runway_corners
 end
 scatter!(scene, projected_points_global)
 # update_cam!(scene.scene, Array(C_t_true), Float32[0, 0, 0])
-perturbed_locations = lift(slidergrid.sliders[1].value) do σ
-    pts = Point3d.([perturb_x1(exp(σ)) for _ in 1:100])
+perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d
+    Int[a;b;c;d]
+end
+perturbed_locations = lift(slidergrid.sliders[1].value, perturbation_mask) do σ, mask
+    pts = Point3d.([perturb_x1(exp(σ); mask=mask) for _ in 1:100])
     filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
            pts) |> collect
 end
