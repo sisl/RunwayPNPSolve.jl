@@ -40,6 +40,7 @@ scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, cle
 slidergrid =  SliderGrid(fig[2, 1],
     (label="Error scale [log]", range = -10:0.1:-1, startvalue=-3, format=x->string(round(exp(x); sigdigits=2)))
 )
+σ = lift(slidergrid.sliders[1].value) do x; exp(x) end
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
 toggles = [Toggle(toggle_grid[i, 1]; active=true) for i in 1:4]
@@ -61,10 +62,18 @@ projected_points_global = lift(Cam_translation, projected_points) do Cam_transla
 end
 #
 projected_points_rect = lift(projected_points) do projected_points
-    projected_points[[1, 2, 4, 3, 1]]
+    pts = map(p->typeof(p)(-p[2], -p[1]),
+              projected_points) |> collect
+    pts[[1, 2, 4, 3, 1]]
 end
-cam_view_ax = Axis(rhs_grid[2, 1])
+projected_points_2d = [lift(projected_points_rect) do rect; rect[i] end
+                       for i in 1:4]
+cam_view_ax = Axis(rhs_grid[2, 1], width=500, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 cam_view = lines!(cam_view_ax, projected_points_rect)
+meshscatter!(cam_view_ax, projected_points_2d[1], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
+meshscatter!(cam_view_ax, projected_points_2d[2], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
+meshscatter!(cam_view_ax, projected_points_2d[3], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
+meshscatter!(cam_view_ax, projected_points_2d[4], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
 #
 # rhs_grid[1, 1] = grid!(hcat(toggles, toggle_labels); tellheight=false, tellwidth=true)
 #
@@ -91,10 +100,10 @@ scatter!(scene, projected_points_global)
 perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d;
     Int[a;b;c;d]
 end
-perturbed_locations = lift(projected_points, slidergrid.sliders[1].value, perturbation_mask) do projected_points, σ, mask
-    pts = Point3d.([perturb_x1(projected_points, exp(σ); mask=mask) for _ in 1:100])
+perturbed_locations = lift(projected_points, σ, perturbation_mask) do projected_points, σ, mask
+    pts = Point3d.([perturb_x1(projected_points, σ; mask=mask) for _ in 1:100])
     filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
            pts) |> collect
 end
 scatter!(scene, perturbed_locations; color=:red)
-scene
+fig
