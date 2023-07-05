@@ -37,6 +37,7 @@ R_t_true = RotY{Float32}(π/2)
 
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
+# Error slider
 slidergrid =  SliderGrid(fig[2, 1],
     (label="Error scale [log]", range = -10:0.1:-1, startvalue=-7, format=x->string(round(exp(x); sigdigits=2)))
 )
@@ -104,7 +105,8 @@ surface!(scene, getindex.(runway_corners, 1),
 # Draw lines from corners to camera
 corner_lines = [lift(C_t_true) do C_t_true
                     [p, C_t_true]
-                    end for p in runway_corners]
+                end
+                for p in runway_corners]
 for l in corner_lines
     lines!(scene, l)
 end
@@ -119,12 +121,21 @@ end
 Label(toggle_grid[6, 1], "Num pose estimates: ")
 num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
                        validator = Int, tellwidth = false)
-perturbed_locations = lift(projected_points, σ, perturbation_mask, num_pose_est_box.stored_string) do projected_points, σ, mask, num_pose_est
-    num_pose_est = tryparse(Int, num_pose_est)
-    pts = Point3d.([perturb_x1(projected_points, σ; mask=mask) for _ in 1:num_pose_est])
+num_pose_est = lift(num_pose_est_box.stored_string) do str
+    tryparse(Int, str)
+end
+perturbed_pose_estimates = lift(projected_points,
+                                σ,
+                                perturbation_mask,
+                                num_pose_est,
+                                C_t_true) do projected_points, σ, mask, num_pose_est, C_t_true
+    pts = Point3d.([pnp(runway_corners, projected_points .+ σ*mask.*[randn(2) for _ in 1:4];
+                        initial_guess = Array(C_t_true)+10.0*randn(3))
+                    for _ in 1:num_pose_est])
+    # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect
     pts
 end
-scatter!(scene, perturbed_locations; color=:red)
+scatter!(scene, perturbed_pose_estimates; color=:red)
 fig
