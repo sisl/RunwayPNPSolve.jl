@@ -4,7 +4,7 @@ function pnp(world_pts, pixel_locations;
              initial_guess = Point3f([-100, 0, 30]))
 
     # C_t_true = Point3f([-100, 0, 30]) ./ 10
-    rotXtoZ = RotY{Float32}(π/2)
+    rotXtoZ = RotY{Float64}(π/2)
 
     f(C_t) = begin
         # Cam_translation = AffineMap(rotXtoZ ∘ gt_rot, Point3f(C_t))
