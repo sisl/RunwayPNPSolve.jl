@@ -91,6 +91,11 @@ arrows!(scene,
         Vec3f[[1,0,0,],[0,1,0],[0,0,1]]./5;
         arrowsize=Vec3f(0.1, 0.1, 0.2)
         )
+arrows!(scene,  # larger coordinate system
+        fill(Point3d(0, -15, 0), 3),
+        Vec3f[[1,0,0,],[0,1,0],[0,0,1]]*5;
+        arrowsize=Vec3f(2, 2, 3)
+        )
 surface!(scene, getindex.(runway_corners, 1),
                 getindex.(runway_corners, 2),
                 getindex.(runway_corners, 3))
