@@ -109,6 +109,8 @@ perturbed_locations = lift(projected_points, σ, perturbation_mask) do projected
     pts = Point3d.([perturb_x1(projected_points, σ; mask=mask) for _ in 1:100])
     filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
            pts) |> collect
+    # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
+    #        pts) |> collect
 end
 scatter!(scene, perturbed_locations; color=:red)
 fig
