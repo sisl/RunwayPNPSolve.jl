@@ -110,10 +110,12 @@ update_cam!(scene.scene, Array(C_t_true[]).-[20.,0,0], Float32[0, 0, 0])
 perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d;
     Int[a;b;c;d]
 end
-perturbed_locations = lift(projected_points, σ, perturbation_mask) do projected_points, σ, mask
-    pts = Point3d.([perturb_x1(projected_points, σ; mask=mask) for _ in 1:100])
-    filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
-           pts) |> collect
+Label(toggle_grid[6, 1], "Num pose estimates: ")
+num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
+                       validator = Int, tellwidth = false)
+perturbed_locations = lift(projected_points, σ, perturbation_mask, num_pose_est_box.stored_string) do projected_points, σ, mask, num_pose_est
+    num_pose_est = tryparse(Int, num_pose_est)
+    pts = Point3d.([perturb_x1(projected_points, σ; mask=mask) for _ in 1:num_pose_est])
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect
 end
