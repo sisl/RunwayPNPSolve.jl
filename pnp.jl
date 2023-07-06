@@ -34,3 +34,12 @@ perturb_x1(projected_points, δ; mask::Union{<:Real, Vector{<:Real}}=1) = begin
     @debug δ, pos_est
     return pos_est
 end
+
+"Hough transform."
+function compute_rho_theta(p1, p2, p3)
+    λ = dot((p2-p1), p3) / norm(p2-p1)^2
+    p4 = p1 + λ*(p2-p1)
+    ρ = norm(p4 - p3)
+    θ = acos( dot([1;0], p4-p3)/ρ ) * -sign((p4-p3)[2])
+    return ρ, θ
+end
