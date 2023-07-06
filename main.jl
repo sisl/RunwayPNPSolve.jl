@@ -34,6 +34,8 @@ runway_corners = Point3d[
     [  0,  5, 0],
     [100, -5, 0],
     [100,  5, 0]]
+runway_corners_far = [10*(runway_corners[3] - runway_corners[1])+runway_corners[1],
+                      10*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
 
 R_t_true = RotY{Float32}(π/2)
 
@@ -60,23 +62,26 @@ C_t_true = lift(scenario_menu.selection) do menu
     menu == "mid (100m)"  && return Point3d([-100, 0, 10])
     menu == "far (500m)"  && return Point3d([-500, 0, 10])
 end
-Cam_translation = lift(C_t_true) do C_t_true; AffineMap(R_t_true, C_t_true) end
-cam_transform = lift(Cam_translation) do Cam_translation; PerspectiveMap() ∘ inv(Cam_translation) end
-projected_points = lift(cam_transform) do cam_transform; map(cam_transform, runway_corners) end
-projected_points_global = lift(Cam_translation, projected_points) do Cam_translation, projected_points
-    map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), projected_points)
-end
+Cam_translation = @lift AffineMap(R_t_true, $C_t_true)
+cam_transform = @lift PerspectiveMap() ∘ inv($Cam_translation)
+projected_points = @lift map($cam_transform, runway_corners)
+projected_points_global = @lift map($Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), $projected_points)
 ## plot points projected onto 2D camera plane
+flip_coord_system(p) = typeof(p)(-p[2], -p[1])
 projected_points_rect = lift(projected_points) do projected_points
-    pts = map(p->typeof(p)(-p[2], -p[1]),
-              projected_points) |> collect
+    pts = map(flip_coord_system, projected_points)
     pts[[1, 2, 4, 3, 1]]
 end
+cam_view_ax = Axis(rhs_grid[2, 1], width=500, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
+lines!(cam_view_ax, projected_points_rect)
+# plot far points in 2d
+projected_points_far = @lift map($cam_transform, runway_corners_far)
+projected_lines_far = (@lift(flip_coord_system.([$(projected_points)[1], $(projected_points_far)[1]])),
+                       @lift(flip_coord_system.([$(projected_points)[2], $(projected_points_far)[2]])))
+lines!.(cam_view_ax, projected_lines_far; color=:gray, linestyle=:dot)
+# plot 1std of Gaussian noise
 projected_points_2d = [lift(projected_points_rect) do rect; rect[i] end
                        for i in 1:4]
-cam_view_ax = Axis(rhs_grid[2, 1], width=500, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
-cam_view = lines!(cam_view_ax, projected_points_rect)
-# plot 1std of Gaussian noise
 meshscatter!(cam_view_ax, projected_points_2d[1], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
 meshscatter!(cam_view_ax, projected_points_2d[2], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
 meshscatter!(cam_view_ax, projected_points_2d[3], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
@@ -88,7 +93,11 @@ cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_s
        mouse_zoomspeed = 5f-1,
        )
 ## Draw runway and coordinate system
+# Normal runway rectangle
 lines!(scene, runway_corners[[1, 2, 4, 3, 1]])
+# Draw 3d runway lines into the distance
+lines!(scene, [runway_corners[1], runway_corners_far[1]]; color=:blue)
+lines!(scene, [runway_corners[2], runway_corners_far[2]]; color=:blue)
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
 arrows!(scene,
         fill(Point3d(0, 0, 0), 3),
