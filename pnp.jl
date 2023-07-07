@@ -1,4 +1,7 @@
 using Optim
+using ReTest
+using Tau
+using Roots
 function pnp(world_pts, pixel_locations;
              gt_rot=Rotations.IdentityMap(),
              initial_guess = Point3f([-100, 0, 30]))
@@ -37,9 +40,13 @@ end
 
 "Hough transform."
 function compute_rho_theta(p1, p2, p3)
-    λ = dot((p2-p1), p3) / norm(p2-p1)^2
-    p4 = p1 + λ*(p2-p1)
-    ρ = norm(p4 - p3)
-    θ = acos( dot([1;0], p4-p3)/ρ ) * -sign((p4-p3)[2])
+    p4(λ) = p1 + λ*(p2-p1)
+    λ = fzero(λ->dot(p2-p1, p4(λ)-p3), 0.)
+    @debug λ, p4(λ)
+    ρ = norm(p4(λ) - p3)
+    θ = acos( dot([1;0], p4(λ)-p3)/ρ ) * sign((p4(λ)-p3)[2])
     return ρ, θ
 end
+# @testset "compute_rho_theta"
+ρ, θ = compute_rho_theta(Point2d(-2, 0), Point2d(0, -2), Point2d(0, 0))
+@test all((ρ, θ) .≈ (√(2), -3/8*τ))
