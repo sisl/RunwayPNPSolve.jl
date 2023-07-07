@@ -39,6 +39,7 @@ function compute_rho_theta(p1, p2, p3)
     θ = acos( dot([1;0], p4(λ)-p3)/ρ ) * sign((p4(λ)-p3)[2])
     return ρ, θ
 end
-# @testset "compute_rho_theta"
-ρ, θ = compute_rho_theta(Point2d(-2, 0), Point2d(0, -2), Point2d(0, 0))
-@test all((ρ, θ) .≈ (√(2), -3/8*τ))
+@testset "compute_rho_theta" begin
+    ρ, θ = compute_rho_theta(Point2d(-2, 0), Point2d(0, -2), Point2d(0, 0))
+    @test all((ρ, θ) .≈ (√(2), -3/8*τ))
+end

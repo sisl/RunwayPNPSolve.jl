@@ -1,5 +1,4 @@
 using Revise
-includet("pnp.jl")
 using StaticArrays
 # using CameraModels
 using LinearAlgebra
@@ -22,12 +21,13 @@ z-axis up.
 
 For now we assume that all runway points are in the x-y plane.
 """
-
 # Point2/3f already exists, also define for double precision
 Point2d = Point2{Float64}
 Vec2d = Vec2{Float64}
 Point3d = Point3{Float64}
 Vec3d = Vec3{Float64}
+includet("pnp.jl")
+
 
 runway_corners = Point3d[
     [  0, -5, 0],
@@ -72,7 +72,7 @@ projected_points_rect = lift(projected_points) do projected_points
     pts = map(flip_coord_system, projected_points)
     pts[[1, 2, 4, 3, 1]]
 end
-cam_view_ax = Axis(rhs_grid[2, 1], width=500, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
+cam_view_ax = Axis(rhs_grid[2, 1], width=1200, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 lines!(cam_view_ax, projected_points_rect)
 # plot far points in 2d
 projected_points_far = @lift map($cam_transform, runway_corners_far)
@@ -153,7 +153,7 @@ scatter!(scene, perturbed_pose_estimates; color=:red)
 ## construct pose estimate errors
 errors_obs = lift(C_t_true, projected_points) do C_t_true, projected_points
     local num_pose_est = 100
-    log_errs = LinRange(-10:0.5:-3)
+    log_errs = LinRange(-10:0.5:-5)
     errs = exp.(log_errs)
     function compute_means_and_stds(σ)
         pts = Point3d.([pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
