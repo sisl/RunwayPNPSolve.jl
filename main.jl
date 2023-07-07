@@ -10,6 +10,7 @@ using ThreadsX
 using IntervalSets
 using StatsBase
 using Unzip
+using StructArrays
 
 """
 Some definitions:
@@ -22,10 +23,6 @@ z-axis up.
 For now we assume that all runway points are in the x-y plane.
 """
 # Point2/3f already exists, also define for double precision
-Point2d = Point2{Float64}
-Vec2d = Vec2{Float64}
-Point3d = Point3{Float64}
-Vec3d = Vec3{Float64}
 includet("pnp.jl")
 
 
@@ -69,10 +66,10 @@ projected_points_global = @lift map($Cam_translation ∘ AffineMap(I(3)[:, 1:2],
 ## plot points projected onto 2D camera plane
 flip_coord_system(p) = typeof(p)(-p[2], -p[1])
 projected_points_rect = lift(projected_points) do projected_points
-    pts = map(flip_coord_system, projected_points)
+    pts = flip_coord_system.(projected_points)
     pts[[1, 2, 4, 3, 1]]
 end
-cam_view_ax = Axis(rhs_grid[2, 1], width=1200, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
+cam_view_ax = Axis(rhs_grid[2, 1], width=800, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 lines!(cam_view_ax, projected_points_rect)
 # plot far points in 2d
 projected_points_far = @lift map($cam_transform, runway_corners_far)
@@ -82,10 +79,24 @@ lines!.(cam_view_ax, projected_lines_far; color=:gray, linestyle=:dot)
 # plot 1std of Gaussian noise
 projected_points_2d = [lift(projected_points_rect) do rect; rect[i] end
                        for i in 1:4]
-meshscatter!(cam_view_ax, projected_points_2d[1], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
-meshscatter!(cam_view_ax, projected_points_2d[2], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
-meshscatter!(cam_view_ax, projected_points_2d[3], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
-meshscatter!(cam_view_ax, projected_points_2d[4], marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
+meshscatter!.(cam_view_ax, projected_points_2d, marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
+# Compute and plot line estimates
+ρ_θ_lhs = lift(projected_points) do ppts
+    compute_rho_theta(ppts[1], ppts[3], (ppts[1]+ppts[2])/2)
+end
+ρ_θ_rhs = lift(projected_points) do ppts
+    compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
+end
+ρ_θ_line_lhs = lift(projected_points, ρ_θ_lhs) do ppts, (ρ, θ)
+    p0 = (ppts[1]+ppts[2])/2
+    flip_coord_system.([p0, p0 + ρ*[cos(θ); sin(θ)]])
+end
+ρ_θ_line_rhs = lift(projected_points, ρ_θ_rhs) do ppts, (ρ, θ)
+    p0 = (ppts[1]+ppts[2])/2
+    flip_coord_system.([p0, p0 + ρ*[cos(θ); sin(θ)]])
+end
+lines!(cam_view_ax, ρ_θ_line_lhs)
+lines!(cam_view_ax, ρ_θ_line_rhs)
 ## Set up camera
 cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
        mouse_rotationspeed = 5f-1,
@@ -136,11 +147,15 @@ num_pose_est = lift(num_pose_est_box.stored_string) do str
     tryparse(Int, str)
 end
 perturbed_pose_estimates = lift(projected_points,
+                                ρ_θ_lhs,
+                                ρ_θ_rhs,
                                 σ,
                                 perturbation_mask,
                                 num_pose_est,
-                                C_t_true) do projected_points, σ, mask, num_pose_est, C_t_true
+                                C_t_true) do projected_points, (ρ_lhs, θ_lhs), (ρ_rhs, θ_rhs), σ, mask, num_pose_est, C_t_true
     pts = Point3d.([pnp(runway_corners, projected_points .+ σ*mask.*[randn(2) for _ in 1:4];
+                        rhos=[ρ_lhs; ρ_rhs].+σ.*randn(2),
+                        thetas=[θ_lhs; θ_rhs].+σ.*randn(2),
                         initial_guess = Array(C_t_true)+10.0*randn(3))
                     for _ in 1:num_pose_est])
     # may filter to contain pose outliers
@@ -151,12 +166,14 @@ end
 scatter!(scene, perturbed_pose_estimates; color=:red)
 #
 ## construct pose estimate errors
-errors_obs = lift(C_t_true, projected_points) do C_t_true, projected_points
+errors_obs = lift(C_t_true, projected_points, ρ_θ_lhs, ρ_θ_rhs) do C_t_true, projected_points, (ρ_lhs, θ_lhs), (ρ_rhs, θ_rhs)
     local num_pose_est = 100
     log_errs = LinRange(-10:0.5:-5)
     errs = exp.(log_errs)
     function compute_means_and_stds(σ)
         pts = Point3d.([pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
+                            rhos=[ρ_lhs; ρ_rhs].+σ.*randn(2),
+                            thetas=[θ_lhs; θ_rhs].+σ.*randn(2),
                             initial_guess = Array(C_t_true)+10.0*randn(3))
                         for _ in 1:num_pose_est])
         Δ = (pts .- C_t_true)
@@ -196,6 +213,7 @@ err_axes = (; x=Axis(error_plots_grid[1, 1]; xscale=log, title="Errors x directi
 hideydecorations!(err_axes.y, ticks=false, ticklabels=true)
 hideydecorations!(err_axes.z, ticks=false, ticklabels=true)
 Makie.linkaxes!(err_axes...)
+# Actually plot all the errors
 errorbars!(err_axes.x, errors.σ, errors.means.x, errors.q5s.x, errors.q95s.x)
 lines!(err_axes.x, errors.σ, errors.means.x)
 errorbars!(err_axes.y, errors.σ, errors.means.y, errors.q5s.y, errors.q95s.y)
