@@ -1,7 +1,11 @@
+using Rotations
+using CoordinateTransformations
+using LinearAlgebra: dot, norm
 using Optim
 using ReTest
 using Tau
 using Roots
+include("typedefs.jl")
 function pnp(world_pts, pixel_locations;
              gt_rot=Rotations.IdentityMap(),
              initial_guess = Point3f([-100, 0, 30]))
@@ -24,18 +28,6 @@ function pnp(world_pts, pixel_locations;
     @assert f(Optim.minimizer(sol)) < 1e8 (sol, Optim.minimizer(sol))
     @debug sol
     return Optim.minimizer(sol)
-end
-
-perturb_x1(projected_points, δ; mask::Union{<:Real, Vector{<:Real}}=1) = begin
-    global runway_corners
-    projected_points_ = projected_points .+ δ*mask.*[randn(2) for _ in 1:4]
-    # projected_points_[3] += Vec2d(δ, 0)
-    # projected_points_[4] -= Vec2d(δ, 0)
-    # projected_points_[2] += Vec2d(0, δ)
-    pos_est = pnp(runway_corners, projected_points_;
-                  initial_guess = Array(C_t_true[])+10.0*randn(3))
-    @debug δ, pos_est
-    return pos_est
 end
 
 "Hough transform."
