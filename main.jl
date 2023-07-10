@@ -66,17 +66,24 @@ cam_transform = @lift PerspectiveMap() ∘ inv($Cam_translation)
 projected_points = @lift map($cam_transform, runway_corners)
 projected_points_global = @lift map($Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float64[0;0;1]), $projected_points)
 ## plot points projected onto 2D camera plane
-flip_coord_system(p) = typeof(p)(-p[2], -p[1])
+dims_2d_to_3d = LinearMap(1.0*I(3)[:, 1:2])
+dims_3d_to_2d = LinearMap(1.0*I(3)[1:2, :])
+projected_coords_to_plotting_coords = ∘(
+    Point2d,
+    dims_3d_to_2d,
+    LinearMap(RotZ(1/4*τ)),
+    LinearMap(RotY(1/2*τ)),
+    dims_2d_to_3d)
 projected_points_rect = lift(projected_points) do projected_points
-    pts = flip_coord_system.(projected_points)
+    pts = projected_coords_to_plotting_coords.(projected_points)
     pts[[1, 2, 4, 3, 1]]
 end
 cam_view_ax = Axis(rhs_grid[2, 1], width=800, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 lines!(cam_view_ax, projected_points_rect)
 # plot far points in 2d
 projected_points_far = @lift map($cam_transform, runway_corners_far)
-projected_lines_far = (@lift(flip_coord_system.([$(projected_points)[1], $(projected_points_far)[1]])),
-                       @lift(flip_coord_system.([$(projected_points)[2], $(projected_points_far)[2]])))
+projected_lines_far = (@lift(projected_coords_to_plotting_coords.([$(projected_points)[1], $(projected_points_far)[1]])),
+                       @lift(projected_coords_to_plotting_coords.([$(projected_points)[2], $(projected_points_far)[2]])))
 lines!.(cam_view_ax, projected_lines_far; color=:gray, linestyle=:dot)
 # plot 1std of Gaussian noise
 projected_points_2d = [lift(projected_points_rect) do rect; rect[i] end
@@ -93,14 +100,15 @@ end
 θ_lhs = @lift $ρ_θ_lhs[2]; θ_rhs = @lift $ρ_θ_rhs[2];
 ρ_θ_line_lhs = lift(projected_points, ρ_θ_lhs) do ppts, (ρ, θ)
     p0 = (ppts[1]+ppts[2])/2
-    flip_coord_system.([p0, p0 + ρ*[cos(θ); sin(θ)]])
+    projected_coords_to_plotting_coords.([p0, p0 + ρ*[cos(θ); sin(θ)]])
 end
 ρ_θ_line_rhs = lift(projected_points, ρ_θ_rhs) do ppts, (ρ, θ)
     p0 = (ppts[1]+ppts[2])/2
-    flip_coord_system.([p0, p0 + ρ*[cos(θ); sin(θ)]])
+    projected_coords_to_plotting_coords.([p0, p0 + ρ*[cos(θ); sin(θ)]])
 end
 lines!(cam_view_ax, ρ_θ_line_lhs)
 lines!(cam_view_ax, ρ_θ_line_rhs)
+## and of projection
 ## Set up camera
 cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
        mouse_rotationspeed = 5f-1,
