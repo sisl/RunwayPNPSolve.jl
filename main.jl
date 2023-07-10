@@ -262,30 +262,14 @@ fig_pnp_obj = let
                         feature_mask=$feature_mask,
                     )
     ax = LScene(fig[1, 1], show_axis=true)
-
-    xs = @lift $C_t_true[1] .+ LinRange(-10, 15, 41)
-    ys = @lift $C_t_true[2] .+ LinRange(-10, 15, 41)
-    zs = @lift $C_t_true[3] .+ LinRange(-5, 8, 41)
-
-    sgrid = SliderGrid(fig[2, 1],
-                    (label = "yz plane - x axis", range = 1:length(xs[])),
-                    (label = "xz plane - y axis", range = 1:length(ys[])),
-                    (label = "xy plane - z axis", range = 1:length(zs[])),
-         )
-
+    #
+    xs = @lift $C_t_true[1] .+ LinRange(-10, 15, 101)
+    ys = @lift $C_t_true[2] .+ LinRange(-10, 15, 101)
+    zs = @lift $C_t_true[3] .+ LinRange( -5,  8, 101)
+    #
     vol = @lift [$pnp_obj([x, y, z]) for x∈$xs, y∈$ys, z∈$zs];
-    plt = volumeslices!(ax, xs, ys, zs, vol)
-
-    # connect sliders to `volumeslices` update methods
-    sl_yz, sl_xz, sl_xy = sgrid.sliders
-
-    on(sl_yz.value) do v; plt[:update_yz][](v) end
-    on(sl_xz.value) do v; plt[:update_xz][](v) end
-    on(sl_xy.value) do v; plt[:update_xy][](v) end
-
-    set_close_to!(sl_yz, .5length(xs[]))
-    set_close_to!(sl_xz, .5length(ys[]))
-    set_close_to!(sl_xy, .5length(zs[]))
-
+    plt = contour!(ax, xs, ys, zs, vol;
+                   levels=10,
+                   transparency=true)
     fig
 end
