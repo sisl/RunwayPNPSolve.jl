@@ -273,3 +273,6 @@ fig_pnp_obj = let
                    transparency=true)
     fig
 end
+
+display(GLMakie.Screen(), fig);
+display(GLMakie.Screen(), fig_pnp_obj);
