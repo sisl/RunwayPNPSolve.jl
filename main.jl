@@ -45,10 +45,12 @@ slidergrid =  SliderGrid(fig[2, 1],
 σ = lift(slidergrid.sliders[1].value) do x; exp(x) end
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
+Label(toggle_grid[1, 2], "Use feature"); Label(toggle_grid[1, 3], "Add noise");
 # Set up noise toggles, scenario menu, num pose estimates
-toggles = [Toggle(toggle_grid[i, 2]; active=true) for i in 1:4]
-toggle_labels = let labels = ["Noise front left:", "Noise front right:", "Noise back left:", "Noise back right:"]
-    [Label(toggle_grid[i, 1], labels[i]) for i in 1:4]
+feature_toggles = [Toggle(toggle_grid[1+i, 2]; active=true) for i in 1:3]
+noise_toggles = [Toggle(toggle_grid[1+i, 3]; active=true) for i in 1:3]
+toggle_labels = let labels = ["Near corners", "Far corners", "Edges"]
+    [Label(toggle_grid[1+i, 1], labels[i]) for i in 1:3]
 end
 ## Set up scenario, which affects cam position and therefore all the projections
 Label(toggle_grid[5, 1], "Scenario:")
@@ -87,6 +89,8 @@ end
 ρ_θ_rhs = lift(projected_points) do ppts
     compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
 end
+ρ_lhs = @lift $ρ_θ_lhs[1]; ρ_rhs = @lift $ρ_θ_rhs[1];
+θ_lhs = @lift $ρ_θ_lhs[2]; θ_rhs = @lift $ρ_θ_rhs[2];
 ρ_θ_line_lhs = lift(projected_points, ρ_θ_lhs) do ppts, (ρ, θ)
     p0 = (ppts[1]+ppts[2])/2
     flip_coord_system.([p0, p0 + ρ*[cos(θ); sin(θ)]])
@@ -103,6 +107,7 @@ cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_s
        mouse_translationspeed = 0.1f0,
        mouse_zoomspeed = 5f-1,
        )
+# inspector = DataInspector(scene)
 ## Draw runway and coordinate system
 # Normal runway rectangle
 lines!(scene, runway_corners[[1, 2, 4, 3, 1]])
@@ -137,8 +142,11 @@ scatter!(scene, projected_points_global)
 # Set cam position
 update_cam!(scene.scene, Array(C_t_true[]).-[20.,0,0], Float32[0, 0, 0])
 # Compute pose estimates
-perturbation_mask = lift(toggles[1].active, toggles[2].active, toggles[3].active, toggles[4].active) do a, b, c, d;
-    Int[a;b;c;d]
+feature_mask = lift(feature_toggles[1].active, feature_toggles[2].active, feature_toggles[3].active) do a, b, c
+    Int[a;b;c]
+end
+noise_mask = lift(noise_toggles[1].active, noise_toggles[2].active, noise_toggles[3].active) do a, b, c
+    Int[a;b;c]
 end
 Label(toggle_grid[6, 1], "Num pose estimates: ")
 num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
@@ -146,24 +154,31 @@ num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
 num_pose_est = lift(num_pose_est_box.stored_string) do str
     tryparse(Int, str)
 end
+opt_traces = []
 perturbed_pose_estimates = lift(projected_points,
                                 ρ_θ_lhs,
                                 ρ_θ_rhs,
                                 σ,
-                                perturbation_mask,
+                                feature_mask,
+                                noise_mask,
                                 num_pose_est,
-                                C_t_true) do projected_points, (ρ_lhs, θ_lhs), (ρ_rhs, θ_rhs), σ, mask, num_pose_est, C_t_true
-    pts = Point3d.([pnp(runway_corners, projected_points .+ σ*mask.*[randn(2) for _ in 1:4];
-                        rhos=[ρ_lhs; ρ_rhs].+σ.*randn(2),
-                        thetas=[θ_lhs; θ_rhs].+σ.*randn(2),
-                        initial_guess = Array(C_t_true)+10.0*randn(3))
-                    for _ in 1:num_pose_est])
+                                C_t_true) do projected_points, (ρ_lhs, θ_lhs), (ρ_rhs, θ_rhs), σ, feature_mask, noise_mask, num_pose_est, C_t_true
+    global opt_traces = []
+    sols = [pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
+                        rhos=[ρ_lhs; ρ_rhs].+σ*noise_mask[3].*randn(2),
+                        thetas=[θ_lhs; θ_rhs].+σ*noise_mask[3].*randn(2),
+                        feature_mask=feature_mask,
+                        initial_guess = Array(C_t_true)+10.0*randn(3),
+                        )
+                    for _ in 1:num_pose_est]
+    global opt_traces = sols
+    pts = (Point3d∘Optim.minimizer).(sols)
     # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect
     pts
 end
-scatter!(scene, perturbed_pose_estimates; color=:red)
+scatter!(scene, perturbed_pose_estimates; color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
 #
 ## construct pose estimate errors
 errors_obs = lift(C_t_true, projected_points, ρ_θ_lhs, ρ_θ_rhs) do C_t_true, projected_points, (ρ_lhs, θ_lhs), (ρ_rhs, θ_rhs)
@@ -171,11 +186,13 @@ errors_obs = lift(C_t_true, projected_points, ρ_θ_lhs, ρ_θ_rhs) do C_t_true,
     log_errs = LinRange(-10:0.5:-5)
     errs = exp.(log_errs)
     function compute_means_and_stds(σ)
-        pts = Point3d.([pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
-                            rhos=[ρ_lhs; ρ_rhs].+σ.*randn(2),
-                            thetas=[θ_lhs; θ_rhs].+σ.*randn(2),
-                            initial_guess = Array(C_t_true)+10.0*randn(3))
-                        for _ in 1:num_pose_est])
+        sols = [pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
+                    rhos=[ρ_lhs; ρ_rhs].+σ.*randn(2),
+                    thetas=[θ_lhs; θ_rhs].+σ.*randn(2),
+                    initial_guess = Array(C_t_true)+10.0*randn(3),
+                    )
+                for _ in 1:num_pose_est]
+        pts = (Point3d∘Optim.minimizer).(filter(Optim.converged, sols))
         Δ = (pts .- C_t_true)
         Δ = map(p->abs.(p), Δ)
         μ_x, μ_y, μ_z = mean.([getindex.(Δ, i) for i in 1:3])
@@ -223,5 +240,52 @@ lines!(err_axes.z, errors.σ, errors.means.z)
 on(C_t_true) do
     reset_limits!(err_axes.x)  # y and z are linked automatically
 end
-#
+on(events(fig).mousebutton, priority = 2) do event
+    if event.button == Mouse.left && event.action == Mouse.press
+        plt, i = pick(fig)
+        @show plt, i
+        if !isnothing(plt)
+            @show opt_traces[i]
+        end
+    end
+    return Consume(false)
+end
+
 fig
+
+fig_pnp_obj = let
+    fig = Figure()
+    pnp_obj = @lift build_pnp_objective(
+                        runway_corners, $projected_points .+ $σ*$noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
+                        rhos=[$ρ_lhs; $ρ_rhs].+$σ*$noise_mask[3].*randn(2),
+                        thetas=[$θ_lhs; $θ_rhs].+$σ*$noise_mask[3].*randn(2),
+                        feature_mask=$feature_mask,
+                    )
+    ax = LScene(fig[1, 1], show_axis=true)
+
+    xs = @lift $C_t_true[1] .+ LinRange(-10, 15, 41)
+    ys = @lift $C_t_true[2] .+ LinRange(-10, 15, 41)
+    zs = @lift $C_t_true[3] .+ LinRange(-5, 8, 41)
+
+    sgrid = SliderGrid(fig[2, 1],
+                    (label = "yz plane - x axis", range = 1:length(xs[])),
+                    (label = "xz plane - y axis", range = 1:length(ys[])),
+                    (label = "xy plane - z axis", range = 1:length(zs[])),
+         )
+
+    vol = @lift [$pnp_obj([x, y, z]) for x∈$xs, y∈$ys, z∈$zs];
+    plt = volumeslices!(ax, xs, ys, zs, vol)
+
+    # connect sliders to `volumeslices` update methods
+    sl_yz, sl_xz, sl_xy = sgrid.sliders
+
+    on(sl_yz.value) do v; plt[:update_yz][](v) end
+    on(sl_xz.value) do v; plt[:update_xz][](v) end
+    on(sl_xy.value) do v; plt[:update_xy][](v) end
+
+    set_close_to!(sl_yz, .5length(xs[]))
+    set_close_to!(sl_xz, .5length(ys[]))
+    set_close_to!(sl_xy, .5length(zs[]))
+
+    fig
+end
