@@ -79,7 +79,7 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
     "Map function over each element in Observable, i.e. mapeach(x->2*x, Observable([1, 2, 3])) == Observable([2, 4, 6])"
     mapeach(f, obs::Observable{<:Vector}) = map(el->map(f, el), obs)
 
-    cam_view_ax = Axis(rhs_grid[2, 1], width=800, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
+    cam_view_ax = Axis(plt_pos, width=250, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 
     projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
     projected_points = @lift map($projective_transform, runway_corners)
@@ -116,7 +116,10 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_lhs))
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_rhs))
 end
-make_perspective_plot(rhs_grid[2, 1], Cam_translation)
+projections_grid = GridLayout(rhs_grid[2, 1])
+make_perspective_plot(projections_grid[1, 1], Cam_translation)
+pose_guess = Observable(AffineMap(R_t_true, C_t_true[]))
+make_perspective_plot(projections_grid[1, 2], pose_guess)
 ## and of projection
 ## Set up camera
 cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
@@ -263,14 +266,13 @@ on(events(fig).mousebutton, priority = 2) do event
         @show plt, i
         if !isnothing(plt)
             @show opt_traces[i]
+            pose_guess[] = AffineMap(R_t_true, Point3d(Optim.minimizer(opt_traces[i])))
         end
     end
     return Consume(false)
 end
 
-fig
-
-fig_pnp_obj = let
+make_fig_pnp_obj() = let
     fig = Figure()
     pnp_obj = @lift build_pnp_objective(
                         runway_corners, $projected_points .+ $σ*$noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
@@ -291,5 +293,6 @@ fig_pnp_obj = let
     fig
 end
 
-display(GLMakie.Screen(), fig);
-display(GLMakie.Screen(), fig_pnp_obj);
+# display(GLMakie.Screen(), fig);
+# display(GLMakie.Screen(), make_fig_pnp_obj());
+fig
