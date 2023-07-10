@@ -6,16 +6,16 @@ using ReTest
 using Tau
 using Roots
 include("typedefs.jl")
-function pnp(world_pts, pixel_locations;
+
+function build_pnp_objective(
+             world_pts, pixel_locations;
              rhos=nothing,
              thetas=nothing,
-             gt_rot=Rotations.IdentityMap(),
-             initial_guess = Point3f([-100, 0, 30]))
+             feature_mask=[1;1;1],
+             gt_rot=Rotations.IdentityMap())
 
-    # C_t_true = Point3f([-100, 0, 30]) ./ 10
-    rotXtoZ = RotY{Float64}(π/2)
-
-    f(C_t) = begin
+    f(C_t) = let
+        rotXtoZ = RotY{Float64}(π/2)
         # Cam_translation = AffineMap(rotXtoZ ∘ gt_rot, Point3f(C_t))
         Cam_translation = AffineMap(rotXtoZ, C_t)
         cam_transform = PerspectiveMap() ∘ inv(Cam_translation)
@@ -24,16 +24,33 @@ function pnp(world_pts, pixel_locations;
         ρ_gt_rhs, θ_gt_rhs = compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
         # projected_points_global = map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float32[0;0;1]),
         #                               projected_points)
-        return ( sum(norm.(projected_points.-pixel_locations))
-               + (!isnothing(rhos)   ? norm(rhos   - [ρ_gt_lhs; ρ_gt_rhs]) : 0)
-               + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ_gt_lhs; θ_gt_rhs]))) : 0) )
+        return ( sum(norm.(projected_points.-pixel_locations)) * feature_mask[1]
+               + (!isnothing(rhos)   ? norm(rhos   - [ρ_gt_lhs; ρ_gt_rhs]) : 0) * feature_mask[2]
+               # tranform angles to imaginary numbers on unit circle before comparison.
+               # avoid problems with e.g. dist(-0.9pi, 0.9pi)
+               + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ_gt_lhs; θ_gt_rhs]))) : 0) * feature_mask[3]
+               )
     end
+    return f
+end
 
-    sol = optimize(f, Array(initial_guess), Optim.NewtonTrustRegion(), Optim.Options(f_tol=1e-7);
+function pnp(world_pts, pixel_locations;
+             rhos=nothing,
+             thetas=nothing,
+             feature_mask=[1;1;1],
+             gt_rot=Rotations.IdentityMap(),
+             initial_guess = Point3f([-100, 0, 30]),
+             opt_traces=nothing)
+    f = build_pnp_objective(world_pts, pixel_locations;
+                            rhos=rhos,thetas=thetas,feature_mask=feature_mask,gt_rot=gt_rot)
+
+    sol = optimize(f, Array(initial_guess),
+                   Optim.NewtonTrustRegion(), Optim.Options(x_tol=1e-4, f_tol=1e-6);
                    autodiff=:forward)
     @assert f(Optim.minimizer(sol)) < 1e8 (sol, Optim.minimizer(sol))
+    (!isnothing(opt_traces) && push!(opt_traces, sol))
     @debug sol
-    return Optim.minimizer(sol)
+    return sol
 end
 
 "Hough transform."
