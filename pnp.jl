@@ -69,3 +69,12 @@ end
     ρ, θ = compute_rho_theta(Point2d(0, 2), Point2d(-2, 2), Point2d(0, 0))
     @test all((ρ, θ) .≈ (2, -2/8*τ))
 end
+
+function hough_transform(projected_points)  # front left, front right, back left, back right
+    ppts = projected_points
+    ρ_θ_lhs = compute_rho_theta(ppts[1], ppts[3], (ppts[1]+ppts[2])/2)
+    ρ_θ_rhs = compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
+    ρ = (; lhs=ρ_θ_lhs[1], rhs=ρ_θ_rhs[1])
+    θ = (; lhs=ρ_θ_lhs[2], rhs=ρ_θ_rhs[2])
+    ρ, θ
+end
