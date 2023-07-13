@@ -13,11 +13,15 @@ function build_pnp_objective(
              thetas=nothing,
              feature_mask=[1;1;1],
              gt_rot=Rotations.IdentityMap(),
+    )
 
     f(C_t) = let
         R_t_true = RotY{Float32}(π/2)
         projected_points = project_points(AffineMap(R_t_true, C_t), world_pts)
         ρ, θ = hough_transform(projected_points)
+        @assert size(projected_points) == size(pixel_locations)
+        return ( sum(norm.(projected_points[1:2].-pixel_locations[1:2])) * feature_mask[1]  # front corners
+               + sum(norm.(projected_points[3:4].-pixel_locations[3:4])) * feature_mask[2]  # back corners
                # + 0.0*(!isnothing(rhos)   ? norm(rhos   - [ρ[:lhs]; ρ[:rhs]]) : 0) * feature_mask[2]
                # tranform angles to imaginary numbers on unit circle before comparison.
                # avoid problems with e.g. dist(-0.9pi, 0.9pi)
@@ -27,6 +31,8 @@ function build_pnp_objective(
     return f
 end
 
+Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
+Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
 function pnp(world_pts, pixel_locations;
              rhos=nothing,
              thetas=nothing,
@@ -37,11 +43,23 @@ function pnp(world_pts, pixel_locations;
     f = build_pnp_objective(world_pts, pixel_locations;
                             rhos=rhos,thetas=thetas,feature_mask=feature_mask,gt_rot=gt_rot)
 
-    sol = optimize(f, Array(initial_guess),
-                   Optim.NewtonTrustRegion(), Optim.Options(x_tol=1e-4, f_tol=1e-6);
-                   autodiff=:forward)
-    @assert f(Optim.minimizer(sol)) < 1e8 (sol, Optim.minimizer(sol))
-    (!isnothing(opt_traces) && push!(opt_traces, sol))
+    initial_guess[3] = max(initial_guess[3], 1.0)
+    presolve = Optim.optimize(f,
+                   Array(initial_guess),
+                   NewtonTrustRegion(),
+                   Optim.Options(f_tol=1e-7),
+                   autodiff=:forward,
+                   )
+    sol = LeastSquaresOptim.optimize(f,
+                   Optim.minimizer(presolve),
+                   LevenbergMarquardt();
+                   lower=[-Inf, -Inf, 0],
+                   autodiff=:forward,
+                   g_tol=1e-7,
+                   iterations=1_000,
+                   )
+    @assert f(Optim.minimizer(sol)) < 1. (sol, Optim.minimizer(sol))
+    # (!isnothing(opt_traces) && push!(opt_traces, sol))
     @debug sol
     return sol
 end
