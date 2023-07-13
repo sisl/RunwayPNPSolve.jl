@@ -9,7 +9,7 @@ function make_error_bars_plot(error_plots_grid)
         function compute_means_and_stds(σ)
             sols = [pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
                         rhos  =[ρ[:lhs]; ρ[:rhs]].+σ.*randn(2),
-                        thetas=[θ[:lhs]; θ[:rhs]].+σ.*randn(2),
+                        thetas=[θ[:lhs]; θ[:rhs]].+σ_angle.*randn(2),
                         initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
                         )
                     for _ in 1:num_pose_est]

@@ -46,8 +46,10 @@ scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, cle
 # Error slider
 slidergrid =  SliderGrid(fig[2, 1],
     (label="Error scale [px]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " pixels")),
+    (label="Error scale [°]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " degrees")),
 )
 σ = lift(slidergrid.sliders[1].value) do x; x end
+σ_angle = lift(slidergrid.sliders[2].value) do x; deg2rad(x) end
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
 Label(toggle_grid[1, 2], "Use feature"); Label(toggle_grid[1, 3], "Add noise");
@@ -194,14 +196,15 @@ end
 opt_traces = []
 perturbed_pose_estimates = lift(cam_pose_gt,
                                 σ,
+                                σ_angle,
                                 feature_mask,
                                 noise_mask,
-                                num_pose_est) do cam_pose_gt, σ, feature_mask, noise_mask, num_pose_est
+                                num_pose_est) do cam_pose_gt, σ, σ_angle, feature_mask, noise_mask, num_pose_est
     projected_points = project_points(cam_pose_gt, runway_corners)
     ρ, θ = hough_transform(projected_points)
     sols = ThreadsX.collect(pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
                                 rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
-                                thetas=[θ[:lhs]; θ[:rhs]].+σ*noise_mask[3].*randn(2),
+                                thetas=[θ[:lhs]; θ[:rhs]].+σ_angle*noise_mask[3].*randn(2),
                                 feature_mask=feature_mask,
                                 initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
                                 )
