@@ -56,7 +56,7 @@ function pnp(world_pts, pixel_locations;
                    LevenbergMarquardt();
                    lower=[-Inf, -Inf, 0],
                    autodiff=:forward,
-                   f_tol=1e-7,
+                   g_tol=1e-7,
                    iterations=1_000,
                    )
     @assert f(Optim.minimizer(sol)) < 1e1 (sol, Optim.minimizer(sol))
