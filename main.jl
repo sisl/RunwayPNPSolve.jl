@@ -189,12 +189,12 @@ perturbed_pose_estimates = lift(cam_pose_gt,
     projected_points = project_points(cam_pose_gt, runway_corners)
     ρ, θ = hough_transform(projected_points)
     sols = ThreadsX.collect(pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
-                        rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
-                        thetas=[θ[:lhs]; θ[:rhs]].+σ*noise_mask[3].*randn(2),
-                        feature_mask=feature_mask,
-                        initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
-                        )
-                    for _ in 1:num_pose_est)
+                                rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
+                                thetas=[θ[:lhs]; θ[:rhs]].+σ*noise_mask[3].*randn(2),
+                                feature_mask=feature_mask,
+                                initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
+                                )
+                            for _ in 1:num_pose_est)
     global opt_traces = sols
     pts = (Point3d∘Optim.minimizer).(sols)
     # may filter to contain pose outliers
