@@ -49,9 +49,15 @@ end
 function compute_rho_theta(p1, p2, p3)
     p4(λ) = p1 + λ*(p2-p1)
     λ = dot((p2-p1), (p3-p1)) / norm(p2-p1)^2
-    # @debug λ, p4(λ)
+    @assert isapprox(dot(p2-p1, p4(λ)-p3), 0.; atol=1e-6) "$(dot(p2-p1, p4(λ)-p3))"
+    @debug λ, p4(λ)
     ρ = norm(p4(λ) - p3)
-    θ = acos( dot([1;0], p4(λ)-p3)/ρ ) * -sign((p4(λ)-p3)[2])
+
+    vec1 = Point2d(1, 0)
+    vec2 = normalize(p4(λ) - p3)
+    y = vec1 - vec2
+    x = vec1 + vec2
+    θ = 2*atan(norm(y), norm(x)) * -sign(vec2[2])
     return ρ, θ
 end
 @testset "compute_rho_theta" begin
@@ -60,6 +66,12 @@ end
 
     ρ, θ = compute_rho_theta(Point2d(0, 2), Point2d(-2, 2), Point2d(0, 0))
     @test all((ρ, θ) .≈ (2, -2/8*τ))
+
+    ρ, θ = compute_rho_theta(Point2d(0, -2), Point2d(-1, -3), Point2d(0, 0))
+    @test all((ρ, θ) .≈ (sqrt(2), 1/8*τ))
+
+    ρ, θ = compute_rho_theta(Point2d(0, 2), Point2d(-1, 3), Point2d(0, 0))
+    @test all((ρ, θ) .≈ (sqrt(2), -1/8*τ))
 end
 
 function hough_transform(projected_points)  # front left, front right, back left, back right
