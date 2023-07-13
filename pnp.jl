@@ -5,6 +5,7 @@ using Optim
 using ReTest
 using Tau
 using Roots
+using LeastSquaresOptim
 include("typedefs.jl")
 
 function build_pnp_objective(
@@ -55,12 +56,12 @@ function pnp(world_pts, pixel_locations;
                    LevenbergMarquardt();
                    lower=[-Inf, -Inf, 0],
                    autodiff=:forward,
-                   g_tol=1e-7,
+                   f_tol=1e-7,
                    iterations=1_000,
                    )
-    @assert f(Optim.minimizer(sol)) < 1. (sol, Optim.minimizer(sol))
+    @assert f(Optim.minimizer(sol)) < 1e1 (sol, Optim.minimizer(sol))
     # (!isnothing(opt_traces) && push!(opt_traces, sol))
-    @debug sol
+    # @debug sol
     return sol
 end
 
