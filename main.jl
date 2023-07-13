@@ -62,7 +62,7 @@ C_t_true = lift(scenario_menu.selection) do menu
     menu == "mid (100m)"  && return Point3d([-100, 0, 10])
     menu == "far (500m)"  && return Point3d([-500, 0, 10])
 end
-function project_points(cam_pose::AffineMap, points::Vector{Point3d})
+function project_points(cam_pose::AbstractAffineMap, points::Vector{Point3d})
     cam_transform = PerspectiveMap() ∘ inv(cam_pose)
     projected_points = map(cam_transform, points)
 end
@@ -70,10 +70,13 @@ dims_2d_to_3d = LinearMap(1.0*I(3)[:, 1:2])
 dims_3d_to_2d = LinearMap(1.0*I(3)[1:2, :])
 cam_pose_gt = @lift AffineMap(R_t_true, $C_t_true)
 
+"Allow `a, b = Observable((1, 2)) |> unzip_obs`"
 function unzip_obs(obs::Observable{<:Tuple})
    Tuple([@lift $obs[i]
           for i in eachindex(obs[])])
 end
+"Map function over each element in Observable, i.e. mapeach(x->2*x, Observable([1, 2, 3])) == Observable([2, 4, 6])"
+mapeach(f, obs::Observable{<:Vector}) = map(el->map(f, el), obs)
 # cam_transform = @lift PerspectiveMap() ∘ inv($Cam_translation)
 # projected_points = @lift map($cam_transform, runway_corners)
 # projected_points_global = @lift map($Cam_translation ∘ AffineMap(dims_2d_to_3d, Float64[0;0;1]), $projected_points)
@@ -86,8 +89,6 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
         LinearMap(RotZ(1/4*τ)),
         LinearMap(RotY(1/2*τ)),
         dims_2d_to_3d)
-    "Map function over each element in Observable, i.e. mapeach(x->2*x, Observable([1, 2, 3])) == Observable([2, 4, 6])"
-    mapeach(f, obs::Observable{<:Vector}) = map(el->map(f, el), obs)
 
     cam_view_ax = Axis(plt_pos, width=250, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
 
@@ -107,13 +108,14 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
                   marker=Makie.Circle(Point2d(0,0), 1.0), markersize=σ)
     # Compute and plot line estimates
     ρ, θ = @lift(hough_transform($projected_points)) |> unzip_obs
+    # Notice the negative angle, due to the orientatin of the coord system.
     ρ_θ_line_lhs = lift(projected_points, ρ, θ) do ppts, ρ, θ
             p0 = (ppts[1]+ppts[2])/2
-            ([p0, p0 + ρ[:lhs]*[cos(θ[:lhs]); sin(θ[:lhs])]])
+            [p0, p0 + ρ[:lhs]*[cos(-θ[:lhs]); sin(-θ[:lhs])]]
     end
     ρ_θ_line_rhs = lift(projected_points, ρ, θ) do ppts, ρ, θ
             p0 = (ppts[1]+ppts[2])/2
-            ([p0, p0 + ρ[:rhs]*[cos(θ[:rhs]); sin(θ[:rhs])]])
+            [p0, p0 + ρ[:rhs]*[cos(-θ[:rhs]); sin(-θ[:rhs])]]
     end
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_lhs))
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_rhs))
@@ -200,7 +202,8 @@ perturbed_pose_estimates = lift(cam_pose_gt,
     #        pts) |> collect
     pts
 end
-scatter!(scene, perturbed_pose_estimates; color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
+pose_samples = scatter!(scene, perturbed_pose_estimates;
+                        color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
 #
 ## construct pose estimate errors
 errors_obs = lift(cam_pose_gt) do cam_pose_gt
