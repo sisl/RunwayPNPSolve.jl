@@ -90,7 +90,8 @@ mapeach(f, obs::Observable{<:Vector}) = map(el->map(f, el), obs)
 # projected_points = @lift map($cam_transform, runway_corners)
 # projected_points_global = @lift map($Cam_translation ∘ AffineMap(dims_2d_to_3d, Float64[0;0;1]), $projected_points)
 ## plot points projected onto 2D camera plane
-function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
+function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap};
+                               title=nothing)
     # Util
     projected_coords_to_plotting_coords = ∘(
         Point2d,
@@ -101,7 +102,9 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
 
     # https://docs.google.com/spreadsheets/d/1r2neGh5YUa2e5Ufr7xOfkrC9kr5bqifN5rn2pktkGS0/edit#gid=760597346
     CAM_WIDTH_PX, CAM_HEIGHT_PX = 4096, 3000
-    cam_view_ax = Axis(plt_pos, width=250, aspect=DataAspect(),
+    cam_view_ax = Axis(plt_pos, width=750;
+                       aspect=DataAspect(),
+                       title=title,
                        limits=(-CAM_WIDTH_PX//2, CAM_WIDTH_PX//2, -CAM_HEIGHT_PX//2, CAM_HEIGHT_PX//2))
 
     # projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
@@ -134,9 +137,9 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_rhs))
 end
 projections_grid = GridLayout(rhs_grid[2, 1])
-make_perspective_plot(projections_grid[1, 1], cam_pose_gt)
+make_perspective_plot(projections_grid[1, 1], cam_pose_gt; title="Ground truth perspective")
 pose_guess = Observable(AffineMap(R_t_true, C_t_true[]))
-make_perspective_plot(projections_grid[1, 2], pose_guess)
+make_perspective_plot(projections_grid[2, 1], pose_guess; title="Perturbed perspective")
 ## and of projection
 ## Set up camera
 cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
