@@ -12,15 +12,16 @@ function build_pnp_objective(
              rhos=nothing,
              thetas=nothing,
              feature_mask=[1;1;1],
-             gt_rot=Rotations.IdentityMap())
+             gt_rot=Rotations.IdentityMap(),
 
     f(C_t) = let
         R_t_true = RotY{Float32}(π/2)
         projected_points = project_points(AffineMap(R_t_true, C_t), world_pts)
         ρ, θ = hough_transform(projected_points)
+               # + 0.0*(!isnothing(rhos)   ? norm(rhos   - [ρ[:lhs]; ρ[:rhs]]) : 0) * feature_mask[2]
                # tranform angles to imaginary numbers on unit circle before comparison.
                # avoid problems with e.g. dist(-0.9pi, 0.9pi)
-               + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ_gt_lhs; θ_gt_rhs]))) : 0) * feature_mask[3]
+               + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
                )
     end
     return f
