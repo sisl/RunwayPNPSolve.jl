@@ -32,8 +32,8 @@ runway_corners = Point3d[
     [  0,  5, 0],
     [100, -5, 0],
     [100,  5, 0]]
-runway_corners_far = [10*(runway_corners[3] - runway_corners[1])+runway_corners[1],
-                      10*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
+runway_corners_far = [3*(runway_corners[3] - runway_corners[1])+runway_corners[1],
+                      3*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
 
 R_t_true = RotY{Float32}(π/2)
 
