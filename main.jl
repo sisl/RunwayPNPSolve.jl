@@ -270,8 +270,8 @@ end
 on(events(scene).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         plt, i = pick(scene)
-        @show plt, i
-        if !isnothing(plt)
+        @show plt, plt==pose_samples, i
+        if !isnothing(plt) && plt==pose_samples
             @show opt_traces[i]
             pose_guess[] = AffineMap(R_t_true, Point3d(Optim.minimizer(opt_traces[i])))
         end
