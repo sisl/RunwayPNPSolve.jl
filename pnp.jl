@@ -26,7 +26,7 @@ function build_pnp_objective(
                # + 0.0*(!isnothing(rhos)   ? norm(rhos   - [ρ[:lhs]; ρ[:rhs]]) : 0) * feature_mask[2]
                # tranform angles to imaginary numbers on unit circle before comparison.
                # avoid problems with e.g. dist(-0.9pi, 0.9pi)
-               + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
+               + 1/10*(!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
                )
     end
     return f
