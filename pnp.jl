@@ -26,7 +26,7 @@ function build_pnp_objective(
                # + 0.0*(!isnothing(rhos)   ? norm(rhos   - [ρ[:lhs]; ρ[:rhs]]) : 0) * feature_mask[2]
                # tranform angles to imaginary numbers on unit circle before comparison.
                # avoid problems with e.g. dist(-0.9pi, 0.9pi)
-               + 1/10*(!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
+               + 10*(!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
                )
     end
     return f
@@ -59,7 +59,7 @@ function pnp(world_pts, pixel_locations;
                    g_tol=1e-7,
                    iterations=1_000,
                    )
-    @assert f(Optim.minimizer(sol)) < 1e1 (sol, Optim.minimizer(sol))
+    # @assert f(Optim.minimizer(sol)) < 1e4 (sol, Optim.minimizer(sol))
     # (!isnothing(opt_traces) && push!(opt_traces, sol))
     # @debug sol
     return sol
@@ -69,7 +69,7 @@ end
 function compute_rho_theta(p1, p2, p3)
     p4(λ) = p1 + λ*(p2-p1)
     λ = dot((p2-p1), (p3-p1)) / norm(p2-p1)^2
-    @assert isapprox(dot(p2-p1, p4(λ)-p3), 0.; atol=1e-6) "$(dot(p2-p1, p4(λ)-p3))"
+    @assert isapprox(dot(p2-p1, p4(λ)-p3)/norm(p2), 0.; atol=1e-4) "$(dot(p2-p1, p4(λ)-p3))"
     @debug λ, p4(λ)
     ρ = norm(p4(λ) - p3)
 

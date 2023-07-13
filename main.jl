@@ -11,6 +11,8 @@ using IntervalSets
 using StatsBase
 using Unzip
 using StructArrays
+using Unitful
+import Unitful: mm
 
 """
 Some definitions:
@@ -27,6 +29,7 @@ includet("pnp.jl")
 includet("debug.jl")
 includet("metrics.jl")
 
+const PX_SIZE = 0.00345*1e-3  # [m / px]
 
 runway_corners = Point3d[
     [  0, -5, 0],
@@ -42,9 +45,9 @@ fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
 # Error slider
 slidergrid =  SliderGrid(fig[2, 1],
-    (label="Error scale [log]", range = -10:0.1:-1, startvalue=-7, format=x->string(round(exp(x); sigdigits=2)))
+    (label="Error scale [px]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " pixels")),
 )
-σ = lift(slidergrid.sliders[1].value) do x; exp(x) end
+σ = lift(slidergrid.sliders[1].value) do x; x end
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
 Label(toggle_grid[1, 2], "Use feature"); Label(toggle_grid[1, 3], "Add noise");
@@ -64,7 +67,10 @@ C_t_true = lift(scenario_menu.selection) do menu
     menu == "far (500m)"  && return Point3d([-500, 0, 10])
 end
 function project_points(cam_pose::AbstractAffineMap, points::Vector{Point3d})
-    cam_transform = PerspectiveMap() ∘ inv(cam_pose)
+    focal_length = 25mm
+    pixel_size = 0.00345mm
+    scale = focal_length / pixel_size |> upreferred  # solve units if necessary, i.e. [mm] / [m]
+    cam_transform = cameramap(scale) ∘ inv(cam_pose)
     projected_points = map(cam_transform, points)
 end
 dims_2d_to_3d = LinearMap(1.0*I(3)[:, 1:2])
@@ -91,15 +97,19 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap})
         LinearMap(RotY(1/2*τ)),
         dims_2d_to_3d)
 
-    cam_view_ax = Axis(plt_pos, width=250, aspect=DataAspect(), limits=(-1,1,-1,1)./8)
+    # https://docs.google.com/spreadsheets/d/1r2neGh5YUa2e5Ufr7xOfkrC9kr5bqifN5rn2pktkGS0/edit#gid=760597346
+    CAM_WIDTH_PX, CAM_HEIGHT_PX = 4096, 3000
+    cam_view_ax = Axis(plt_pos, width=250, aspect=DataAspect(),
+                       limits=(-CAM_WIDTH_PX//2, CAM_WIDTH_PX//2, -CAM_HEIGHT_PX//2, CAM_HEIGHT_PX//2))
 
-    projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
-    projected_points = @lift map($projective_transform, runway_corners)
+    # projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
+    # projected_points = @lift map($projective_transform, runway_corners)
+    projected_points = @lift project_points($cam_pose, runway_corners)
     projected_points_rect = @lift $projected_points[[1, 2, 4, 3, 1]]
 
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, projected_points_rect))
     # plot far points in 2d
-    projected_points_far = @lift map($projective_transform, runway_corners_far)
+    projected_points_far = @lift project_points($cam_pose, runway_corners_far)
     projected_lines_far = (@lift([$projected_points[1], $projected_points_far[1]]),
                            @lift([$projected_points[2], $projected_points_far[2]]))
     lines!.(cam_view_ax, mapeach.(projected_coords_to_plotting_coords, projected_lines_far);
@@ -163,8 +173,8 @@ for l in corner_lines
     lines!(scene, l)
 end
 # Draw Projected points
-projected_points_global = @lift map($cam_pose_gt ∘ Translation([0;0;1]) ∘ dims_2d_to_3d,
-                                    project_points($cam_pose_gt, runway_corners))
+projected_points_global = @lift map($cam_pose_gt ∘ Translation([0;0;0.0025]) ∘ dims_2d_to_3d,
+                                    project_points($cam_pose_gt, runway_corners)) * PX_SIZE
 scatter!(scene, projected_points_global)
 # Set cam position
 update_cam!(scene.scene, Array(C_t_true[]).-[20.,0,0], Float32[0, 0, 0])
