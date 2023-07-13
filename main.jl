@@ -24,6 +24,7 @@ For now we assume that all runway points are in the x-y plane.
 """
 # Point2/3f already exists, also define for double precision
 includet("pnp.jl")
+includet("debug.jl")
 
 
 runway_corners = Point3d[
@@ -275,26 +276,6 @@ on(events(scene).mousebutton, priority = 2) do event
     return Consume(false)
 end
 
-make_fig_pnp_obj() = let
-    fig = Figure()
-    pnp_obj = @lift build_pnp_objective(
-                        runway_corners, $projected_points .+ $σ*$noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
-                        rhos=[$ρ_lhs; $ρ_rhs].+$σ*$noise_mask[3].*randn(2),
-                        thetas=[$θ_lhs; $θ_rhs].+$σ*$noise_mask[3].*randn(2),
-                        feature_mask=$feature_mask,
-                    )
-    ax = LScene(fig[1, 1], show_axis=true)
-    #
-    xs = @lift $C_t_true[1] .+ LinRange(-10, 15, 101)
-    ys = @lift $C_t_true[2] .+ LinRange(-10, 15, 101)
-    zs = @lift $C_t_true[3] .+ LinRange( -5,  8, 101)
-    #
-    vol = @lift [$pnp_obj([x, y, z]) for x∈$xs, y∈$ys, z∈$zs];
-    plt = contour!(ax, xs, ys, zs, vol;
-                   levels=10,
-                   transparency=true)
-    fig
-end
 
 # display(GLMakie.Screen(), fig);
 # display(GLMakie.Screen(), make_fig_pnp_obj());
