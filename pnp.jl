@@ -15,17 +15,9 @@ function build_pnp_objective(
              gt_rot=Rotations.IdentityMap())
 
     f(C_t) = let
-        rotXtoZ = RotY{Float64}(π/2)
-        # Cam_translation = AffineMap(rotXtoZ ∘ gt_rot, Point3f(C_t))
-        Cam_translation = AffineMap(rotXtoZ, C_t)
-        cam_transform = PerspectiveMap() ∘ inv(Cam_translation)
-        projected_points = ppts = map(cam_transform, world_pts)
-        ρ_gt_lhs, θ_gt_lhs = compute_rho_theta(ppts[1], ppts[3], (ppts[1]+ppts[2])/2)
-        ρ_gt_rhs, θ_gt_rhs = compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
-        # projected_points_global = map(Cam_translation ∘ AffineMap(I(3)[:, 1:2], Float32[0;0;1]),
-        #                               projected_points)
-        return ( sum(norm.(projected_points.-pixel_locations)) * feature_mask[1]
-               + (!isnothing(rhos)   ? norm(rhos   - [ρ_gt_lhs; ρ_gt_rhs]) : 0) * feature_mask[2]
+        R_t_true = RotY{Float32}(π/2)
+        projected_points = project_points(AffineMap(R_t_true, C_t), world_pts)
+        ρ, θ = hough_transform(projected_points)
                # tranform angles to imaginary numbers on unit circle before comparison.
                # avoid problems with e.g. dist(-0.9pi, 0.9pi)
                + (!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ_gt_lhs; θ_gt_rhs]))) : 0) * feature_mask[3]
