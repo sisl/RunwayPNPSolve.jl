@@ -1,0 +1,4 @@
+name = "BayesianPnP"
+uuid = "bf560c9a-8e80-40da-9aa3-80cf8d537000"
+authors = ["Romeo Valentin <romeo.valentin.int@airbus-sv.com>"]
+version = "0.1.0"
