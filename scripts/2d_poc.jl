@@ -72,13 +72,12 @@ function compute_bayesian_pose_estimate(
                         0., Roots.Newton())
         Translation([x_guess; 0; z_0])
     end
-    @show P_0
 
     # Step 2
     ray_vec = p - P_0.translation
 
     # Step 3
-    σ_z = let σ_z_pre = cam_rot([0;0;σ′′_z]),  # pre projection
+    σ_z = let σ_z_pre = cam_rot([σ′′[2];0;0]),  # pre projection
             ray_vec = normalize(ray_vec)
         σ_z_pre - dot(σ_z_pre, ray_vec) * ray_vec
     end
@@ -88,7 +87,7 @@ function compute_bayesian_pose_estimate(
     μ = P_0.translation
     Σ_ = let
         # Step 4
-        Λ = diagm([1e2; 10; norm(σ_z)])
+        Λ = diagm([1e3; 10; norm(σ_z)])
         vecs  = [normalize(ray_vec) [0.;1;0] normalize(σ_z)]
         vecs * Λ * vecs'
     end
