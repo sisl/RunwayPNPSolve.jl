@@ -34,78 +34,66 @@ using Roots, ForwardDiff; D(f) = x->ForwardDiff.derivative(f, x)
 # using Makie, GLMakie
 using Plots, StatsPlots
 using Distributions
-include("src/mv_normal_prod.jl")
+include("../src/mv_normal_prod.jl")
+include("plot.jl")
+
+using GeometryBasics
+Point2d = Point2{Float64}
+Vec2d = Vec2{Float64}
+Point3d = Point3{Float64}
+Vec3d = Vec3{Float64}
 
 # Note: Type p′ as p+\prime<TAB>
 p = [10.; 0; 8]
-cam_rot = LinearMap(RotY(-τ/4))
+cam_rot = LinearMap(RotY(-τ/4))  # to point the camera z axis forward
 cam_pos = Translation([-10.; 0; 5])
 cam_pose = cam_pos ∘ cam_rot
 make_projection_map(cam_pose) = PerspectiveMap() ∘ inv(cam_pose)
 p′′ = make_projection_map(cam_pose)(p)
 
+function compute_bayesian_pose_estimate(
+    p :: Point3d,
+    cam_rot :: LinearMap,
+    p′′ :: Point2d,
+    σ′′ :: SVector{2, Float64};
+    x_guess :: Float64 = -30.
+    ) :: MvNormal
 
-# Step 1
-P_0 = let x_guess = -30.
-    projection_error(z) = let P = Translation([x_guess; 0; z])
-        cam_pose = P ∘ cam_rot
-        projection_map = make_projection_map(cam_pose)
-        sq = x->x.^2
-        return sum(sq, projection_map(p) - p′′)
+    # Step 1
+    P_0 = let x_guess = -30.
+        projection_error(z) = let P = Translation([x_guess; 0; z])
+            cam_pose = P ∘ cam_rot
+            projection_map = make_projection_map(cam_pose)
+            sq = x->x.^2
+            return sum(sq, projection_map(p) - p′′)
+        end
+        f = projection_error
+        z_0 = Roots.find_zero((f, D(f)),
+                        0., Roots.Newton())
+        Translation([x_guess; 0; z_0])
     end
-    f = projection_error
-    z_0 = Roots.find_zero((f, D(f)),
-                    0., Roots.Newton())
-    Translation([x_guess; 0; z_0])
-end
+    @show P_0
 
-# Step 2
-ray_vec = p - P_0.translation
+    # Step 2
+    ray_vec = p - P_0.translation
 
-# Step 3
-σ′′_z = 1.1
-
-σ_z = let σ_z_pre = cam_rot([0;0;σ′′_z]),  # pre projection
-          ray_vec = normalize(ray_vec)
-    σ_z_pre - dot(σ_z_pre, ray_vec) * ray_vec
-end
-@assert abs(dot(σ_z, ray_vec)) < 1e-6
-
-function compute_angle(vec1, vec2)
-    y = vec1 - vec2
-    x = vec1 + vec2
-    θ = 2*atan(norm(y), norm(x))
-end
-
-μ = P_0.translation
-Σ = let
-    Λ = diagm([1e2; 10; norm(σ_z)]);
-    vecs  = [normalize(ray_vec) [0.;1;0] normalize(σ_z)]
-    vecs * Λ * vecs'
-end
-
-# Plot everything
-no_y(p::Point) = p[[1, 3]] |> Point2f
-no_y(p::Vector) = p[[1, 3]] |> Point2f
-no_y(p::SVector) = p[[1, 3]] |> Point2f
-no_y(p::Matrix) = p[[1, 3], [1, 3]]
-
-plt = Plots.plot(; aspect_ratio=1)
-let P_0 = P_0.translation, cam_pos = cam_pos.translation
-    Plots.scatter!(plt, no_y.([p, cam_pos, P_0]))
-    Plots.plot!(plt, no_y.([P_0 - 4*σ_z, P_0 + 4*σ_z]))
-    let (μ, Σ) = (N1.μ, N1.Σ |> Matrix)
-        covellipse!(plt, no_y(μ), no_y(Σ))
+    # Step 3
+    σ_z = let σ_z_pre = cam_rot([0;0;σ′′_z]),  # pre projection
+            ray_vec = normalize(ray_vec)
+        σ_z_pre - dot(σ_z_pre, ray_vec) * ray_vec
     end
-    let (μ, Σ) = (N2.μ, N2.Σ |> Matrix)
-        covellipse!(plt, no_y(μ), no_y(Σ))
-    end
-    let (μ, Σ) = (N3.μ, N3.Σ |> Matrix)
-        covellipse!(plt, no_y(μ), no_y(Σ))
-    end
-end
-plt
+    @assert abs(dot(σ_z, ray_vec)) < 1e-6
 
-N1 = MvNormal(μ, Σ;)
-N2 = MvNormal(μ, Σ;)
-N3 = prod([N1,N2])
+    # # Step 5
+    μ = P_0.translation
+    Σ_ = let
+        # Step 4
+        Λ = diagm([1e2; 10; norm(σ_z)])
+        vecs  = [normalize(ray_vec) [0.;1;0] normalize(σ_z)]
+        vecs * Λ * vecs'
+    end
+    Σ = 1/2 * (Σ_ + Σ_')  # make sure it's hermetian, overcoming numerical errors
+    @assert all(abs.(Σ - Σ') .< 1e-6)
+
+    MvNormal(μ, Σ)
+end
