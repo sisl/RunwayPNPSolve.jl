@@ -59,8 +59,9 @@ function compute_bayesian_pose_estimate(
     x_guess :: Float64 = -30.
     ) :: MvNormal
 
+    σ′′_x, σ′′_y = σ′′
     # Step 1
-    P_0 = let x_guess = -30.
+    P_0 = let
         projection_error(z) = let P = Translation([x_guess; 0; z])
             cam_pose = P ∘ cam_rot
             projection_map = make_projection_map(cam_pose)
@@ -77,18 +78,22 @@ function compute_bayesian_pose_estimate(
     ray_vec = p - P_0.translation
 
     # Step 3
-    σ_z = let σ_z_pre = cam_rot([σ′′[2];0;0]),  # pre projection
+    σ_z = let σ_z_pre = cam_rot([σ′′_x;0;0]),  # pre projection
             ray_vec = normalize(ray_vec)
         σ_z_pre - dot(σ_z_pre, ray_vec) * ray_vec
     end
-    @assert abs(dot(σ_z, ray_vec)) < 1e-6
+    σ_y = let σ_y_pre = cam_rot([0;σ′′_y;0]),  # pre projection
+            ray_vec = normalize(ray_vec)
+        σ_y_pre - dot(σ_y_pre, ray_vec) * ray_vec
+    end
+    @assert abs(dot(σ_y, ray_vec)) < 1e-6
 
     # # Step 5
     μ = P_0.translation
     Σ_ = let
         # Step 4
-        Λ = diagm([1e3; 10; norm(σ_z)])
-        vecs  = [normalize(ray_vec) [0.;1;0] normalize(σ_z)]
+        Λ = diagm([1e3; norm(σ_y); norm(σ_z)])
+        vecs  = [normalize(ray_vec) normalize(σ_y) normalize(σ_z)]
         vecs * Λ * vecs'
     end
     Σ = 1/2 * (Σ_ + Σ_')  # make sure it's hermetian, overcoming numerical errors
