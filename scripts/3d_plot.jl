@@ -24,7 +24,7 @@ Ns = map(p->compute_bayesian_pose_estimate(
              p,
              cam_rot,
              projection_map(p),
-             @SVector [1.0e-1; 1.0e-1];
+             @SVector [1.0e-2; 1.0e-2];
              x_guess = -20.),
          ps)
 N_total = prod(Ns)
@@ -34,14 +34,14 @@ scene = Makie.LScene(fig[1, 1])
 Makie.scatter!(scene, ps)
 Makie.scatter!(scene, [cam_pos.translation |> Point3d])
 #
-xs = cam_pos.translation[1] .+ LinRange(-30, 30, 101)/10
-ys = cam_pos.translation[2] .+ LinRange(-40, 40, 101)/10
-zs = cam_pos.translation[3] .+ LinRange( -20,  20, 101)/10
+xs = cam_pos.translation[1] .+ LinRange(-30, 30, 51)/10
+ys = cam_pos.translation[2] .+ LinRange(-40, 40, 51)/10
+zs = cam_pos.translation[3] .+ LinRange( -20,  20, 51)/10
 individual_plots = []
 for N in Ns
     vol = [pdf(N, [x, y, z]) for x∈xs, y∈ys, z∈zs];
     push!(individual_plots,
-          Makie.contour!(scene, xs, ys, zs, vol; levels=5, alpha=0.3))
+          Makie.contour!(scene, xs, ys, zs, vol; levels=5, alpha=1.0))
 end
 let N = N_total
     vol = [pdf(N, [x, y, z]) for x∈xs, y∈ys, z∈zs];

@@ -9,8 +9,8 @@ no_y(p::Matrix) = p[[1, 3], [1, 3]]
 
 ps = Point3d.([
       [10.; 0; 1],
-      [10.; 0; 5],
-      [10.; 0; 8]])
+      [10.; 3; 5],
+      [10.; -3; 8]])
 cam_rot = LinearMap(RotY(-τ/4))  # to point the camera z axis forward
 cam_pos = Translation([-10.; 0; 5])
 cam_pose = cam_pos ∘ cam_rot
@@ -22,7 +22,8 @@ Ns = map(p->compute_bayesian_pose_estimate(
              p,
              cam_rot,
              projection_map(p),
-             @SVector [1.0; 1.0]),
+             @SVector [1.0; 1.0];
+             x_guess = -10.),
          ps)
 N_total = prod(Ns)
 
