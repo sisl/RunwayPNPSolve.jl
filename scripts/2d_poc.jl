@@ -30,12 +30,12 @@ Call this pose guess P_0 (as given in world coords).
 using LinearAlgebra, StaticArraysCore
 using Rotations, CoordinateTransformations, GeometryBasics
 using Tau  # τ = 2*π
-using Roots, ForwardDiff; D(f) = x->ForwardDiff.derivative(f, x)
+using Optim
 # using Makie, GLMakie
 using Plots, StatsPlots
 using Distributions
 include("../src/mv_normal_prod.jl")
-include("plot.jl")
+# include("plot.jl")
 
 using GeometryBasics
 Point2d = Point2{Float64}
@@ -44,12 +44,12 @@ Point3d = Point3{Float64}
 Vec3d = Vec3{Float64}
 
 # Note: Type p′ as p+\prime<TAB>
-p = [10.; 0; 8]
-cam_rot = LinearMap(RotY(-τ/4))  # to point the camera z axis forward
-cam_pos = Translation([-10.; 0; 5])
-cam_pose = cam_pos ∘ cam_rot
-make_projection_map(cam_pose) = PerspectiveMap() ∘ inv(cam_pose)
-p′′ = make_projection_map(cam_pose)(p)
+# p = [10.; 0; 8]
+# cam_rot = LinearMap(RotY(-τ/4))  # to point the camera z axis forward
+# cam_pos = Translation([-10.; 0; 5])
+# cam_pose = cam_pos ∘ cam_rot
+# make_projection_map(cam_pose) = PerspectiveMap() ∘ inv(cam_pose)
+# p′′ = make_projection_map(cam_pose)(p)
 
 function compute_bayesian_pose_estimate(
     p :: Point3d,
@@ -62,16 +62,20 @@ function compute_bayesian_pose_estimate(
     σ′′_x, σ′′_y = σ′′
     # Step 1
     P_0 = let
-        projection_error(z) = let P = Translation([x_guess; 0; z])
+        projection_error(y_z) = let (y, z) = y_z,
+                                    P = Translation([x_guess; y; z])
             cam_pose = P ∘ cam_rot
             projection_map = make_projection_map(cam_pose)
             sq = x->x.^2
             return sum(sq, projection_map(p) - p′′)
         end
-        f = projection_error
-        z_0 = Roots.find_zero((f, D(f)),
-                        0., Roots.Newton())
-        Translation([x_guess; 0; z_0])
+
+        y_0, z_0 = let f = projection_error
+            sol = Optim.optimize(f, [0.; 0], Optim.Newton(); autodiff=:forward)
+            @assert Optim.converged(sol)
+            Optim.minimizer(sol)
+        end
+        Translation([x_guess; y_0; z_0])
     end
 
     # Step 2
