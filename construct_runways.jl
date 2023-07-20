@@ -1,7 +1,7 @@
 using DataFrames, XLSX
 using Geodesy
 using Unitful, Unitful.DefaultSymbols
-import Unitful: Length
+import Unitful: Length, ustrip
 Angle = Union{typeof(1.0°), typeof(1.0rad)};
 
 using LightOSM
@@ -84,6 +84,7 @@ all_corners = vcat([
         construct_runway_corners(thres, width, bearing)
         for (thres, width, bearing) in zip(thresholds, df[:, "RWY Width (m)"].*1m, df[:, "True Bearing"].*1°)
     ]...)
+ustrip(pos::ENU{Length}) = ustrip(pos) |> ENU
 
 area = compute_LLA_rectangle(p1, (; x=(-500, 3000), y=(-500, 3000)))
 # area = (
