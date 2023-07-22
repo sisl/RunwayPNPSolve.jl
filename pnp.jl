@@ -1,64 +1,66 @@
 using Rotations
-using CoordinateTransformations
-using LinearAlgebra: dot, norm
+using CoordinateTransformations, Geodesy
+using LinearAlgebra: dot, norm, I
 using Optim
 using ReTest
 using Tau
 using Roots
 using LeastSquaresOptim
+using Unitful: Length
+using StaticArrays: StaticVector, MVector
 include("typedefs.jl")
 
 function build_pnp_objective(
-             world_pts, pixel_locations;
+             world_pts, pixel_locations, cam_rotation;
              rhos=nothing,
              thetas=nothing,
              feature_mask=[1;1;1],
-             gt_rot=Rotations.IdentityMap(),
     )
 
-    f(C_t) = let
-        R_t_true = RotY{Float32}(π/2)
-        projected_points = project_points(AffineMap(R_t_true, C_t), world_pts)
-        ρ, θ = hough_transform(projected_points)
+    f(C_t::StaticVector{3, Float64})::Float64 = let
+        projected_points = project_points(AffineMap(cam_rotation, C_t), world_pts)
+        ρ, θ = (!isnothing(rhos) || !isnothing(thetas) ? hough_transform(projected_points) : (nothing, nothing))
         @assert size(projected_points) == size(pixel_locations)
-        return ( sum(norm.(projected_points[1:2].-pixel_locations[1:2])) * feature_mask[1]  # front corners
-               + sum(norm.(projected_points[3:4].-pixel_locations[3:4])) * feature_mask[2]  # back corners
-               # + 0.0*(!isnothing(rhos)   ? norm(rhos   - [ρ[:lhs]; ρ[:rhs]]) : 0) * feature_mask[2]
-               # tranform angles to imaginary numbers on unit circle before comparison.
-               # avoid problems with e.g. dist(-0.9pi, 0.9pi)
-               + 10*(!isnothing(thetas) ? sum(norm.(exp.(im.*thetas) .- exp.(im.*[θ[:lhs]; θ[:rhs]]))) : 0) * feature_mask[3]
-               )
+        return sum(norm.(projected_points.-pixel_locations))
     end
     return f
 end
 
 Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
 Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
-function pnp(world_pts, pixel_locations;
-             rhos=nothing,
-             thetas=nothing,
-             feature_mask=[1;1;1],
-             gt_rot=Rotations.IdentityMap(),
-             initial_guess = Point3f([-100, 0, 30]),
-             opt_traces=nothing)
-    f = build_pnp_objective(world_pts, pixel_locations;
-                            rhos=rhos,thetas=thetas,feature_mask=feature_mask,gt_rot=gt_rot)
+function pnp(world_pts::Vector{ENU{Meters}},
+             pixel_locations::Vector{Point{2, Pixels}},
+             cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
+             initial_guess::ENU{Meters} = ENU(-100.0m, 0m, 30m),
+             method=NelderMead()
+             )
+    # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
+    world_pts = world_pts .|> ustrip
+    pixel_locations = pixel_locations .|> ustrip
+    initial_guess = initial_guess |> ustrip
 
-    initial_guess[3] = max(initial_guess[3], 1.0)
-    presolve = Optim.optimize(f,
-                   Array(initial_guess),
-                   NewtonTrustRegion(),
+    f = build_pnp_objective(world_pts,
+                            pixel_locations,
+                            cam_rotation)
+    f_ = TwiceDifferentiable(f, MVector(1., 1, 1))
+
+    initial_guess = typeof(initial_guess)(initial_guess[1], initial_guess[2], max(initial_guess[3], 1.0))
+    presolve = Optim.optimize(f_,
+                   MVector(initial_guess),
+                   method,
+                   # NewtonTrustRegion(),
                    Optim.Options(f_tol=1e-7),
                    autodiff=:forward,
                    )
-    sol = LeastSquaresOptim.optimize(f,
-                   Optim.minimizer(presolve),
-                   LevenbergMarquardt();
-                   lower=[-Inf, -Inf, 0],
-                   autodiff=:forward,
-                   g_tol=1e-7,
-                   iterations=1_000,
-                   )
+    return presolve
+    # sol = LeastSquaresOptim.optimize(f,
+    #                Optim.minimizer(presolve),
+    #                LevenbergMarquardt();
+    #                lower=[-Inf, -Inf, 0],
+    #                autodiff=:forward,
+    #                g_tol=1e-7,
+    #                iterations=1_000,
+    #                )
     # @assert f(Optim.minimizer(sol)) < 1e4 (sol, Optim.minimizer(sol))
     # (!isnothing(opt_traces) && push!(opt_traces, sol))
     # @debug sol

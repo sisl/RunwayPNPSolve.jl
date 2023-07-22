@@ -1,0 +1,62 @@
+using DataFrames, XLSX
+using Geodesy
+using Unitful, Unitful.DefaultSymbols
+import Unitful: Length, ustrip, uconvert
+import StaticArrays: StaticVector
+Angle = Union{typeof(1.0°), typeof(1.0rad)};
+Meters = typeof(1.0m)
+ustrip(vec::ENU{Q}) where Q <: Length =
+    ENU{Q.types[1]}(map(ustrip, vec)...)
+# ustrip(pos::ENU{Length}) = ustrip.([pos...]) |> ENU
+uconvert(u::Unitful.Units, pos::ENU{<:Length}) = uconvert.(u, pos)
+const DATUM=wgs84
+@unit pxl "px" Pixel 0.00345mm false
+Pixels = typeof(1.0pxl)
+
+function compute_LLA_rectangle(origin::LLA{<:Real}, rect::@NamedTuple{x::Tuple{T, T},
+                                                                      y::Tuple{T, T}}) where T<:Length
+    rect = let transform_back = LLAfromENU(origin, DATUM),
+               origin = ENUfromLLA(origin, DATUM)
+
+        # type takes care of unit conversion
+        bottom_left = ENU{typeof(1.0m)}(rect.x[1], rect.y[1], 0m) |> ustrip
+        top_right   = ENU{typeof(1.0m)}(rect.x[2], rect.y[2], 0m) |> ustrip
+        transform_back.([bottom_left, top_right])
+    end
+    return (; minlat=rect[1].lat, minlon=rect[1].lon,
+              maxlat=rect[2].lat, maxlon=rect[2].lon)
+end
+
+function get_unique_runways(runway_identifier; runway_file="./data/2307 A3 Reference Data_v2.xlsx")
+    runways = let
+        df = XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
+        df[df.ICAO .== runway_identifier, :]
+    end
+    # Most runways are provided in the two opposite directions.
+    # We only want one direction.
+    runways_unique_direction = let
+        bearings_180 = runways[:, "True Bearing"] .% 180.  # "project" e.g. left-to-right and right-to-left onto the same orientation
+        unique_indices = unique(i->round(bearings_180[i]; digits=0),
+                                eachindex(bearings_180))
+        runways[unique_indices, :]
+    end
+end
+angle_to_ENU(θ::Angle) = let
+    θ = -θ  # flip orientation
+    θ = θ + 90°  # orient from x axis (east)
+end
+function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Angle;
+                                  length=1000m) where T<:Length
+    # Bearing is defined in degrees, clockwise, from north.
+    # We want it in rad, counterclockwise (i.e. in accordance to z axis), from east (x axis).
+    bearing = angle_to_ENU(bearing)
+
+    threshold_far = threshold + length * [cos(bearing); sin(bearing); 0];
+
+    front_left  = threshold     + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
+    front_right = threshold     + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
+    back_left   = threshold_far + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
+    back_right  = threshold_far + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
+
+    return ENU{typeof(1.0m)}[front_left, front_right, back_left, back_right]
+end

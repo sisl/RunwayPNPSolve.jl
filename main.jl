@@ -1,5 +1,4 @@
 using Revise
-using StaticArrays
 # using CameraModels
 using LinearAlgebra
 using Rotations
@@ -39,7 +38,7 @@ runway_corners = Point3d[
 runway_corners_far = [3*(runway_corners[3] - runway_corners[1])+runway_corners[1],
                       3*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
 
-R_t_true = RotY{Float32}(π/2)
+R_t_true = I(3)
 
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
