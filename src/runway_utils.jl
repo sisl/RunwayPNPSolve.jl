@@ -81,3 +81,28 @@ function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVect
     projected_points = map(Point2d ∘ cam_transform, points)
     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
 end
+
+function compute_thresholds_and_corners_in_ENU(
+        runways_df::DataFrame,
+        origin::LLA)::Tuple{Vector{ENU{Meters}}, Vector{ENU{Meters}}}
+    thresholds::Vector{ENU{Meters}} = [
+        let
+            thres = ENUfromLLA(origin, DATUM)(
+                LLA(row[["THR Lat", "THR Long", "THR Elev"]]...)
+            )
+            ENU([thres...]m)  # assign unit "meter"
+        end
+        for row in eachrow(runways_df)
+    ]
+
+    corners::Vector{ENU{Meters}} = vcat([
+        let
+            construct_runway_corners(thres, width, bearing)
+        end
+        for (thres, width, bearing) in zip(thresholds,
+                                        runways_df[:, "RWY Width (m)"]m,
+                                        runways_df[:, "True Bearing" ]°)
+    ]...)
+
+    return thresholds, corners
+end
