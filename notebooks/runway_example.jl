@@ -28,15 +28,6 @@ using Optim
 ("Some other imports (hidden).")
 end
 
-# ╔═╡ 24380978-4e01-4752-9e78-939e9d5aead5
-# ╠═╡ disabled = true
-#=╠═╡
-begin
-	using JSServe
-	Page(; exportable=false)
-end
-  ╠═╡ =#
-
 # ╔═╡ 34e85343-c69d-4fe9-a1e8-ba1afe87482a
 import PNPSolve: get_unique_runways, construct_runway_corners, angle_to_ENU,
 				 pnp, compute_LLA_rectangle, compute_thresholds_and_corners_in_ENU,
@@ -44,16 +35,26 @@ import PNPSolve: get_unique_runways, construct_runway_corners, angle_to_ENU,
 				 Meters, m, Pixels, pxl, °, DATUM, Length
 
 
+# ╔═╡ d17f6850-521a-4af2-954c-38c6606919f3
+md"""
+Let's start by selecting the airport.
+"""
+
 # ╔═╡ 7b870a89-0ced-45f9-8d4e-d8574c122b89
 runway="KABQ";
+
+# ╔═╡ 75fd79b1-a39f-4a99-b0a7-6e24dd339feb
+md"""
+Next, we select one of the runways, and compute the origin, bearing, and all the runway corners.
+"""
 
 # ╔═╡ c2cb059e-35a4-4cc8-b619-f4b584e37df1
 begin 
 runways_df::DataFrame = get_unique_runways(
 	runway,
 	runway_file="/Users/romeovalentin/Documents/PNPSolve/data/2307 A3 Reference Data_v2.xlsx")
-origin::LLA = LLA(runways_df[1, ["THR Lat", "THR Long", "THR Elev"]]...)
-
+origin::LLA = LLA(runways_df[2, ["THR Lat", "THR Long", "THR Elev"]]...)
+runway_bearing = angle_to_ENU(runways_df[2, "True Bearing"]°)
 thresholds::Vector{ENU{Meters}}, corners::Vector{ENU{Meters}} =
 	compute_thresholds_and_corners_in_ENU(runways_df, origin)
 end
@@ -105,6 +106,10 @@ function project(p::ENU, origin::LLA, to::WebMercator)
 	proj(p)
 end
 
+let corners = ustrip.(corners)
+	Makie.scatter!(tyler.axis, project.(corners, [origin], [web_mercator]);
+				   color=:red)
+end
 
 import MapTiles
 tyler
@@ -116,63 +121,29 @@ Let's plot the computed corner points into the Google satelite view.
 (Note that we don't know the runway length...)
 """
 
-# ╔═╡ 45b83189-dd11-4041-a66d-6618a16f3c62
-# ╠═╡ disabled = true
-#=╠═╡
-begin
-	#sc = Scene()
-	#ax= Axis3D(sc[1, 1])
-	f = Makie.scatter([1., 2, 3], [1, 2, 3])
-	f
-end
-  ╠═╡ =#
-
-# ╔═╡ f42820ca-e596-4410-9372-e3d6acb66c41
-# ╠═╡ disabled = true
-#=╠═╡
-begin
-	tyler2 = Tyler.Map(loc; provider=TileProviders.Google())
-	tyler2.figure
-end
-  ╠═╡ =#
-
-# ╔═╡ 83ba62e4-d125-4167-99b0-f423f040df2f
-# ╠═╡ disabled = true
-#=╠═╡
-begin
-	#using JSServe
-	using Extents
-	#using Tyler,Extents,WGLMakie
-	server=JSServe.Server("0.0.0.0", 8083)
-	extent=Extent(Y=(46.18,55.78),X=(3.088,17.112)) #Germany
-	tyler3=Tyler.Map(extent)
-	route!(server, "/browser-display" => App(tyler.figure))
-end
-  ╠═╡ =#
-
-# ╔═╡ c2d1cc10-2f72-43cc-8640-22bbc58b67d0
-let corners = ustrip.(corners)
-	Makie.scatter!(tyler.axis, project.(corners, [origin], [web_mercator]);
-			   	   color=:red)
-end
-
 # ╔═╡ 4cf5468e-3bae-4abc-994e-e29c0c10667a
 md"""
-Let's define the camera pose and compute the camera projections.  
+Let's define the camera pose in ENU (i.e. wrt the origin).
 """
 
 # ╔═╡ e5a830b0-9a02-4d60-8e6c-8211fa97312d
-begin
-camera_pose = let distance_to_runway=1000m,
+camera_pose = let distance_to_runway=6000m,
                   vertical_angle=1.2°,
+				  crosstrack_angle=3°,
+				  crosstrack=atan(crosstrack_angle)*distance_to_runway,
 				  height=atan(vertical_angle)*distance_to_runway
     @info "height=$(round(Meters, height; digits=2))"
-    bearing = angle_to_ENU(runways_df[1, "True Bearing"]°)
-    AffineMap(RotZ(bearing), RotZ(bearing)*[-distance_to_runway;0.0m;height])
-end
+	@info "crosstrack=$(round(Meters, crosstrack; digits=2))"
+    AffineMap(RotZ(runway_bearing), 
+		      RotZ(runway_bearing)*[-distance_to_runway;crosstrack;height])
+end;
 
-projected_corners′′::Vector{Point{2, Pixels}} = project_points(camera_pose, corners)
+# ╔═╡ 73541eb9-6d34-4a54-88f2-8292fa633aa7
+md"""
+Next, let's set up a function that takes pixel error and choice of representation, and outputs a single pose estimate.
+"""
 
+# ╔═╡ 1b48ae08-c4eb-4d6d-abae-bb09d95c522b
 make_pnp_sample(; σ::Pixels=5pxl,
                   representation::Representation=NEAR_CORNERS) = let
     idx = @match representation begin
@@ -180,11 +151,13 @@ make_pnp_sample(; σ::Pixels=5pxl,
         NEAR_FAR_CORNERS => 1:4,
         ALL_CORNERS => eachindex(corners)
     end
+	projected_corners′′::Vector{Point{2, Pixels}} = 
+		project_points(camera_pose, corners)
     noise = [σ*randn(2) for _ in eachindex(projected_corners′′)]
     pnp(corners[idx], projected_corners′′[idx] + noise[idx], camera_pose.linear;
-        initial_guess = camera_pose.linear*ENU(-100.0m, 0m, 10m),
+        initial_guess = camera_pose.linear*ENU(-1000.0m, 0m, 10m),
         method=NelderMead()) |> Optim.minimizer
-end
+	#pnp2(ustrip.([m], corners[idx]), ustrip.(pxl, projected_corners′′[idx] + noise[idx]), camera_pose.linear)
 end
 
 # ╔═╡ 3aaf57d2-81bf-4ffe-aeda-c8aeac3cc98f
@@ -195,13 +168,16 @@ function Statistics.corzm(x::Matrix{T}, vardim::Int=1) where {T}
     c = unscaled_covzm(x, vardim) / oneunit(T)^2
     return cov2cor!(c, collect(sqrt(c[i,i]) for i in 1:min(size(c)...)))
 end
+md"""
+(Hidden.) To compute the statistics, we need to fix a "bug" in the Statistics stdlib.
+"""
 end
 
 # ╔═╡ bd5c5c55-a28b-4b77-8f83-96e489c4784f
 begin
 pos = []
 for repr in instances(Representation),
-    noise in [5.0pxl] #, 10.0pxl]
+    noise in [1.0pxl] #, 10.0pxl]
     #
     samples = [make_pnp_sample(; σ=noise, representation=repr)*1m
 		       for _ in 1:100]
@@ -211,8 +187,8 @@ for repr in instances(Representation),
     rnd(x::Length) = round(Meters, x; sigdigits=3)
     @info (mean(error_samples) .|> rnd)
     @info (std(error_samples) .|> rnd)
-    @info (cov(stack(error_samples; dims=1)))
-    @info (cor(stack(error_samples; dims=1)))
+    #@info (cov(stack(error_samples; dims=1)))
+    #@info (cor(stack(error_samples; dims=1)))
 	push!(pos, samples)
 end
 end
@@ -225,6 +201,10 @@ Makie.scatter!(tyler.axis, project.(ENU.(pos[1]) .|> ustrip,
 Makie.scatter!(tyler.axis, project.(ENU.(pos[2]) .|> ustrip,
 	                                [origin], [web_mercator]);
 			   color=:green)
+	Makie.scatter!(tyler.axis, project.(ENU.(pos[3]) .|> ustrip,
+	                                [origin], [web_mercator]);
+			   color=:orange)
+
 tyler.figure
 end
 
@@ -232,20 +212,19 @@ end
 display(tyler.figure)
 
 # ╔═╡ Cell order:
-# ╠═24380978-4e01-4752-9e78-939e9d5aead5
 # ╠═88ff9edf-045b-4273-8398-32acac3b0ebf
-# ╠═3f9c4bfe-d617-4e7f-8b48-35f4dda75e97
-# ╠═34e85343-c69d-4fe9-a1e8-ba1afe87482a
+# ╟─3f9c4bfe-d617-4e7f-8b48-35f4dda75e97
+# ╟─34e85343-c69d-4fe9-a1e8-ba1afe87482a
+# ╟─d17f6850-521a-4af2-954c-38c6606919f3
 # ╠═7b870a89-0ced-45f9-8d4e-d8574c122b89
+# ╟─75fd79b1-a39f-4a99-b0a7-6e24dd339feb
 # ╠═c2cb059e-35a4-4cc8-b619-f4b584e37df1
 # ╟─eda68c0e-b64e-4668-922f-4a8ac86b6f3b
-# ╠═45b83189-dd11-4041-a66d-6618a16f3c62
-# ╠═f42820ca-e596-4410-9372-e3d6acb66c41
-# ╠═83ba62e4-d125-4167-99b0-f423f040df2f
-# ╠═64af8590-e4fd-4dae-805f-ecd672ff31ca
-# ╠═c2d1cc10-2f72-43cc-8640-22bbc58b67d0
+# ╟─64af8590-e4fd-4dae-805f-ecd672ff31ca
 # ╟─4cf5468e-3bae-4abc-994e-e29c0c10667a
 # ╠═e5a830b0-9a02-4d60-8e6c-8211fa97312d
+# ╟─73541eb9-6d34-4a54-88f2-8292fa633aa7
+# ╠═1b48ae08-c4eb-4d6d-abae-bb09d95c522b
 # ╟─3aaf57d2-81bf-4ffe-aeda-c8aeac3cc98f
 # ╠═bd5c5c55-a28b-4b77-8f83-96e489c4784f
 # ╠═fbced025-7241-4aa7-9e6c-76634e6e0b53
