@@ -12,6 +12,7 @@ using CSV, DataFrames, DataFramesMeta
 using Unitful; using Unitful.DefaultSymbols; const Meters = typeof(1.0m)
 using IntervalSets
 using StatsBase, Statistics
+using Distributions
 md"""Some imports. (hidden)"""
 end
 
@@ -89,16 +90,16 @@ df_in_service_volume = filter(in_service_volume, df_full);
 function unfold_df(df)
 """Bring dataframe into stacked form for better processing.
 
-The dataframe by default has columns `gt_vertices_runway_top_left_corner_x` etc., aggregating many predictions in one row.
-For easier processing, we want one prediction error per row, with columns e.g. `loc_top_bottom=top`, `loc_left_right=left`, `axis=x`, etc.
+The dataframe by default has columns like `gt_vertices_runway_top_left_corner_x`, `pred_vertices_bottom_right_y`, etc., aggregating predictions for each corner in one row.
+For easier processing, we want one prediction (or rather prediction error) per row, with columns like `loc_top_bottom=top`, `loc_left_right=left`, `axis=x`, etc.
 
-Executing this takes usually <1s (0.3s for 20_000 samples).
+Performance note: Executing this usually takes <1s (0.3s for 20_000 samples), so executing it many times is generally fine.
 """
   vcat([
   select(df, [Symbol("gt_vertices_runway_$(loc_tb)_$(loc_lr)_corner_$(ax)"),
             Symbol("pred_vertices_$(loc_tb)_$(loc_lr)_$(ax)")]
          => ByRow((val_gt, val_pred)->[val_pred-val_gt, ax, loc_tb, loc_lr])
-         => [:err_val, :axis, :loc_near_far, :loc_left_right])
+         => [:pixel_errors, :axis, :loc_near_far, :loc_left_right])
   for loc_tb in ["top", "bottom"],
       loc_lr in ["left", "right"],
     ax in ["x", "y"]
@@ -106,12 +107,13 @@ Executing this takes usually <1s (0.3s for 20_000 samples).
 end
 
 # ╔═╡ 204e5e13-c1d1-412f-9cf2-c1037a1e5cf6
-function error_plots(df_unfolded;
+function error_plots(df;
                      linkxaxes=:all,
                      datalimits=(arr->2*iqr(arr).*(-1,1)),
                      title=nothing)
+  df_unfolded = unfold_df(df)
   plt = AoG.data(df_unfolded)
-  plt *= AoG.mapping(:err_val => "Error [px]",
+  plt *= AoG.mapping(:pixel_errors => "Error [px]",
                      col=:loc_left_right,
                      row=:loc_near_far => AoG.renamer(["top"=>"far",
                                                        "bottom"=>"near"]),
@@ -130,17 +132,17 @@ We have one plot for each of the for corners, and plot error in x- and y-directi
 """
 
 # ╔═╡ 7afdbacc-d3f0-4309-aeca-9d3b355396e1
- error_plots(df_in_service_volume |> unfold_df;
+ error_plots(df_in_service_volume;
              title="Corner estimation errors across full service volume.")
 
 # ╔═╡ f804765c-8e8f-4c80-a98f-e15a6af4e370
 md"""
 We see that the errors are actually way above 1 pixel for all corners.
-In fact, consider the following fact:
+Indeed, consider the following numbers:
 """
 
 # ╔═╡ 95145748-e937-44c5-a732-13c36540454c
-@info quantile.([(df_in_service_volume |> unfold_df).err_val], [0.25, 0.75])
+@info quantile.([unfold_df(df_in_service_volume).pixel_errors], [0.25, 0.75])
 
 # ╔═╡ 1e558af0-b1c9-458d-9ae8-1e2e407b53ad
 md"""
@@ -152,7 +154,7 @@ md"""
 ### Considering the extreme cases only.
 Next, we want to look at only samples that lie at the "extremes" of this service volume.
 Notice however that there are practically no samples that lie at all extremes at once.
-We therefore consider samples that lie on one of the three extremes only.
+We therefore consider samples that lie on at least one of the three extremes.
 """
 
 # ╔═╡ 2848f3aa-257f-4dba-bac0-74fad2449041
@@ -163,15 +165,16 @@ Let's define the "extreme" service volume and count how many samples lie in each
 
 # ╔═╡ 9f55e07a-fae1-408e-8c20-c204250aafdb
 in_extreme_service_volume(row) = 
-  row.gt_translation_x ∈ (-6000m .. -5000m) ||
-  abs(row.horizontal_angle) ∈ 1°..3° ||
-  row.vertical_angle ∈ 1.2°..3.0°
+  row.gt_translation_x ∈ (-6000m .. -5500m) ||
+  abs(row.horizontal_angle) ∈ 2°..3° ||
+  row.vertical_angle ∈ 1.2°..2.0°
 
 # ╔═╡ 7cdd671a-867a-4fe6-9c59-777e1711e182
 begin
-@info filter(row->row.gt_translation_x ∈ (-6000m .. -5000m), df_full) |> nrow
-@info filter(row->abs(row.horizontal_angle) ∈ 1°..3°, df_full) |> nrow
-@info filter(row->row.vertical_angle ∈ 1.2°..3.0°, df_full) |> nrow
+@info "Number of samples for each condition"
+@info filter(row->row.gt_translation_x ∈ (-6000m .. -5500m), df_full) |> nrow
+@info filter(row->abs(row.horizontal_angle) ∈ 1.5°..3°, df_full) |> nrow
+@info filter(row->row.vertical_angle ∈ 1.2°..2.0°, df_full) |> nrow
 end
 
 # ╔═╡ d5a9d032-2f0e-4b7e-b1a1-b4a427c3a475
@@ -181,18 +184,58 @@ Next, let's look again at the distributions, and at the "worse" 50% range.
 """
 
 # ╔═╡ 06b25714-a11b-4a77-a029-d3d9fe00d0f5
-df_extreme = filter(in_extreme_service_volume, df_in_service_volume);
+df_extreme = filter(in_extreme_service_volume, df_in_service_volume); @info "Number of extreme samples = $(nrow(df_extreme))"
 
 # ╔═╡ af292295-4fca-43ee-a8ff-3a5513803713
-error_plots(unfold_df(df_extreme);
+error_plots(df_extreme;
 		    title="Corner estimation errors in extreme service volume.")
 
 # ╔═╡ bfc22f95-820a-4507-bc72-f753444cfeda
-@info quantile.([(df_extreme |> unfold_df).err_val], [0.25, 0.75])
+@info quantile.([(df_in_service_volume |> unfold_df).pixel_errors], [0.25, 0.75])
 
 # ╔═╡ e8533e42-c021-4778-97b8-fd98d9b91789
 md"""
 We can see that in the "extreme" case it got slightly worse still, however not that much.
+"""
+
+# ╔═╡ 1a88d305-2be4-4844-be27-72eaf510807b
+md"""
+### Investigating the nature of the distribution.
+For further analysis purposes, we may be interested to model the prediction error as a distribution; for example we might try to fit a Gaussian distribution to the data.
+
+However, we will see that a Gaussian is a poor model. Rather, the data seem to be distributed according to the `Cauchy distribution`. Indeed, this seems to be a natural conclusion, given the following insight:
+"The Cauchy distribution is the distribution of the x-intercept of a ray [...] with a uniformly distributed angle" ([source](https://en.wikipedia.org/wiki/Cauchy_distribution#)).
+
+For further clarification, let's plot a fitted Gaussian and Cauchy distribution to the combined distribution of all pixel errors (in the service volume).
+"""
+
+# ╔═╡ 10e6e1c1-092c-4b0f-ba15-2f9e4b8f240f
+let df = unfold_df(df_in_service_volume)
+σ_est = iqr(df.pixel_errors);  # @info σ_est
+gaussian_dist = fit_mle(Normal, 
+	filter(∈(-3*σ_est..3*σ_est), df.pixel_errors)); @info gaussian_dist
+cauchy_dist = fit(Cauchy, df.pixel_errors); @info cauchy_dist
+
+col_renamer = AoG.renamer(CartesianIndex(1,)=>"Gaussian fit", 
+						  CartesianIndex(2,)=>"Cauchy fit")
+col_mapping = AoG.mapping(col=AoG.dims(1)=>col_renamer)
+	
+plt1 =  AoG.data(sort(df, :pixel_errors))
+plt1 *= AoG.mapping([:pixel_errors, :pixel_errors])
+plt1 *= AoG.density(; datalimits=(arr->5*σ_est.*(-1,1)))
+	
+plt2 =  AoG.data((pixel_errors=range(-5*σ_est, 5*σ_est, length=500),))
+plt2 *= AoG.mapping([:pixel_errors, :pixel_errors], 
+	                [:pixel_errors=>x->pdf(gaussian_dist, x),
+				     :pixel_errors=>x->pdf(cauchy_dist,   x)])
+plt2 *= AoG.mapping(color=AoG.dims(1)=>col_renamer)
+plt2 *= AoG.visual(AoG.Lines)
+AoG.draw((plt1 + plt2)*col_mapping)
+end
+
+# ╔═╡ 55b8d352-713e-42b0-a7f0-df1d50b29814
+md"""
+We can manage to get a good fit with a Gaussian, however we notice that the "fat tails" are not accounted for in the Gaussian; they are however accounted for in the Cauchy distribution.
 """
 
 # ╔═╡ Cell order:
@@ -221,3 +264,6 @@ We can see that in the "extreme" case it got slightly worse still, however not t
 # ╠═af292295-4fca-43ee-a8ff-3a5513803713
 # ╠═bfc22f95-820a-4507-bc72-f753444cfeda
 # ╟─e8533e42-c021-4778-97b8-fd98d9b91789
+# ╟─1a88d305-2be4-4844-be27-72eaf510807b
+# ╟─10e6e1c1-092c-4b0f-ba15-2f9e4b8f240f
+# ╟─55b8d352-713e-42b0-a7f0-df1d50b29814
