@@ -8,10 +8,24 @@ using Roots
 using LeastSquaresOptim
 using Unitful: Length
 using StaticArrays: StaticVector, MVector
-include("typedefs.jl")
+using Unitful: ustrip
+
+function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
+                        points::Vector{ENU{T}}) where T<:Union{Length, Float64}
+    # projection expects z axis to point forward, so we rotate accordingly
+    scale = let focal_length = 25mm,
+                pixel_size = 0.00345mm
+        focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
+    end
+    cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
+    projected_points = map(Point2d ∘ cam_transform, points)
+    projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
+end
 
 function build_pnp_objective(
-             world_pts, pixel_locations, cam_rotation;
+             world_pts::Vector{<:ENU},
+             pixel_locations::Vector{<:Point2},
+             cam_rotation::Rotation{3};
              rhos=nothing,
              thetas=nothing,
              feature_mask=[1;1;1],
@@ -29,22 +43,23 @@ end
 Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
 Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
 function pnp(world_pts::Vector{ENU{Meters}},
-             pixel_locations::Vector{Point{2, Pixels}},
+             pixel_locations::Vector{Point2{Pixels}},
              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
              initial_guess::ENU{Meters} = ENU(-100.0m, 0m, 30m),
              method=NelderMead()
              )
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
-    world_pts = world_pts .|> ustrip
-    pixel_locations = pixel_locations .|> ustrip
-    initial_guess = initial_guess |> ustrip
+    world_pts = ustrip.(m, world_pts)
+    pixel_locations = ustrip.(pxl, pixel_locations)
+    initial_guess = ustrip.(m, initial_guess)
+    cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
 
     f = build_pnp_objective(world_pts,
                             pixel_locations,
                             cam_rotation)
     f_ = TwiceDifferentiable(f, MVector(1., 1, 1))
 
-    initial_guess = typeof(initial_guess)(initial_guess[1], initial_guess[2], max(initial_guess[3], 1.0))
+    # initial_guess = typeof(initial_guess)(initial_guess[1], initial_guess[2], max(initial_guess[3], 1.0))
     presolve = Optim.optimize(f_,
                    MVector(initial_guess),
                    method,
