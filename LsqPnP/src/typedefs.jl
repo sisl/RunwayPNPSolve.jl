@@ -12,12 +12,12 @@ Meters = typeof(1.0m)
 @unit pxl "px" Pixel 0.00345mm false
 Pixels = typeof(1.0pxl)
 
-Unitful.ustrip(pos::ENU{Q}) where Q <: Quantity =
-    ENU{Q.types[1]}(ustrip.(pos))
-Unitful.ustrip(u::Units, pos::ENU{Q}) where Q <: Quantity =
-    ENU{Q.types[1]}(ustrip.(u, pos))
+# Unitful.ustrip(pos::ENU{Q}) where Q <: Quantity =
+#     ENU{Q.types[1]}(ustrip.(pos))
+# Unitful.ustrip(u::Units, pos::ENU{Q}) where Q <: Quantity =
+#     ENU{Q.types[1]}(ustrip.(u, pos))
 
-Unitful.ustrip(pos::Point{N, Q}) where {N, Q <: Quantity} =
-    Point{N, Q.types[1]}(ustrip.(pos))
-Unitful.ustrip(u::Units, pos::Point{N, Q}) where {N, Q <: Quantity} =
-    Point{N, Q.types[1]}(ustrip.(u, pos))
+# Unitful.ustrip(pos::Point{N, Q}) where {N, Q <: Quantity} =
+#     Point{N, Q.types[1]}(ustrip.(pos))
+# Unitful.ustrip(u::Units, pos::Point{N, Q}) where {N, Q <: Quantity} =
+#     Point{N, Q.types[1]}(ustrip.(u, pos))

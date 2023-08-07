@@ -1,4 +1,5 @@
 using Revise
+using PNPSolve
 # using CameraModels
 using LinearAlgebra
 using Rotations
@@ -11,7 +12,9 @@ using StatsBase
 using Unzip
 using StructArrays
 using Unitful
+using Tau
 import Unitful: mm
+using Geodesy
 
 """
 Some definitions:
@@ -24,9 +27,9 @@ z-axis up.
 For now we assume that all runway points are in the x-y plane.
 """
 # Point2/3f already exists, also define for double precision
-includet("pnp.jl")
-includet("debug.jl")
-includet("metrics.jl")
+# includet("pnp.jl")
+# includet("debug.jl")
+# includet("metrics.jl")
 
 const PX_SIZE = 0.00345*1e-3  # [m / px]
 
@@ -60,18 +63,18 @@ toggle_labels = let labels = ["Near corners", "Far corners", "Edges"]
 end
 ## Set up scenario, which affects cam position and therefore all the projections
 Label(toggle_grid[5, 1], "Scenario:")
-scenario_menu = Menu(toggle_grid[5, 2]; options=["near (10m)", "mid (100m)", "far (500m)"], default="mid (100m)")
+scenario_menu = Menu(toggle_grid[5, 2]; options=["near (300m)", "mid (1000m)", "far (6000m)"], default="mid (1000m)")
 #
 C_t_true = lift(scenario_menu.selection) do menu
-    menu == "near (10m)" && return Point3d([-10, 0, 10])
-    menu == "mid (100m)"  && return Point3d([-100, 0, 10])
-    menu == "far (500m)"  && return Point3d([-500, 0, 10])
+    menu == "near (300m)" && return Point3d([-300, 0, 10])
+    menu == "mid (1000m)"  && return Point3d([-1000, 0, 10])
+    menu == "far (6000m)"  && return Point3d([-6000, 0, 10])
 end
 function project_points(cam_pose::AbstractAffineMap, points::Vector{Point3d})
     focal_length = 25mm
     pixel_size = 0.00345mm
     scale = focal_length / pixel_size |> upreferred  # solve units if necessary, i.e. [mm] / [m]
-    cam_transform = cameramap(scale) ∘ inv(cam_pose)
+    cam_transform = cameramap(scale) ∘ LinearMap(RotY(-τ/4)) ∘ inv(cam_pose)
     projected_points = map(cam_transform, points)
 end
 dims_2d_to_3d = LinearMap(1.0*I(3)[:, 1:2])
@@ -195,20 +198,33 @@ num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
 num_pose_est = lift(num_pose_est_box.stored_string) do str
     tryparse(Int, str)
 end
+only_x_toggle = Toggle(toggle_grid[6, 3]; active=false)
+only_x = Observable(false)
+std_box = Label(toggle_grid[6, 4], "")
+connect!(only_x_toggle.active, only_x)
+
 opt_traces = []
 perturbed_pose_estimates = lift(cam_pose_gt,
                                 σ,
                                 σ_angle,
                                 feature_mask,
                                 noise_mask,
-                                num_pose_est) do cam_pose_gt, σ, σ_angle, feature_mask, noise_mask, num_pose_est
+                                num_pose_est,
+                                only_x) do cam_pose_gt, σ, σ_angle, feature_mask, noise_mask, num_pose_est, only_x
     projected_points = project_points(cam_pose_gt, runway_corners)
     ρ, θ = hough_transform(projected_points)
-    sols = ThreadsX.collect(pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
-                                rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
-                                thetas=[θ[:lhs]; θ[:rhs]].+σ_angle*noise_mask[3].*randn(2),
-                                feature_mask=feature_mask,
-                                initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
+    # sols = ThreadsX.collect(pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
+    #                             rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
+    #                             thetas=[θ[:lhs]; θ[:rhs]].+σ_angle*noise_mask[3].*randn(2),
+    #                             feature_mask=feature_mask,
+    #                             initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
+    #                             )
+    #                         for _ in 1:num_pose_est)
+    sols = ThreadsX.collect(pnp(ENU{Meters}.(runway_corners .* 1m),
+                                Point2{Pixels}.((projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4]).*1pxl),
+                                RotY(0.);
+                                initial_guess = ENU{Meters}((Array(cam_pose_gt.translation)+10.0*randn(3))*1m),
+                                only_x=only_x
                                 )
                             for _ in 1:num_pose_est)
     global opt_traces = sols
@@ -220,7 +236,11 @@ perturbed_pose_estimates = lift(cam_pose_gt,
 end
 pose_samples = scatter!(scene, perturbed_pose_estimates;
                         color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
+on(perturbed_pose_estimates) do ps
+    std_box.text = "std=$(round(std(getindex.(ps, 1)), digits=3))m"
+end
 #
+"""  commented out for debug
 on(events(scene).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         plt, i = pick(scene)
@@ -233,6 +253,7 @@ on(events(scene).mousebutton, priority = 2) do event
     return Consume(false)
 end
 # make_error_bars_plot(rhs_grid[3, 1])
+"""
 
 
 # display(GLMakie.Screen(), make_fig_pnp_obj());

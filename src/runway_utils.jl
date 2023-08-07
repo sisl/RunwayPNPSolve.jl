@@ -4,22 +4,22 @@ using Unitful, Unitful.DefaultSymbols
 import Unitful: Length, ustrip, uconvert
 import StaticArrays: StaticVector
 import Base: zero
-Angle = Union{typeof(1.0°), typeof(1.0rad)};
-Meters = typeof(1.0m)
-ustrip(vec::ENU{Q}) where Q <: Length =
-    ENU{Q.types[1]}(map(ustrip, vec)...)
-ustrip(u::Q, vec::ENU{Q′}) where {Q, Q′<:Unitful.Units} =
-    ENU{Q.types[1]}(map(x->ustrip(Q, x), vec)...)
-# ustrip(pos::ENU{Length}) = ustrip.([pos...]) |> ENU
-# uconvert(u::Unitful.Units, pos::ENU{<:Length}) = uconvert.(u, pos)
-uconvert(u::Unitful.Units, pos::ENU{<:Quantity}) = uconvert.(u, pos)
-uconvert(u::Unitful.Units, map::AffineMap) = AffineMap(map.linear, uconvert.(u, map.translation))
-uconvert(u::Unitful.Units, pt::Point) = uconvert.(u, pt)
-ustrip(map::AffineMap) = AffineMap(map.linear, ustrip.(map.translation))
-# Base.zero(u::T) where T <: Quantity = T(0)
+# Angle = Union{typeof(1.0°), typeof(1.0rad)};
+# Meters = typeof(1.0m)
+# ustrip(vec::ENU{Q}) where Q <: Length =
+#     ENU{Q.types[1]}(map(ustrip, vec)...)
+# ustrip(u::Q, vec::ENU{Q′}) where {Q, Q′<:Unitful.Units} =
+#     ENU{Q.types[1]}(map(x->ustrip(Q, x), vec)...)
+# # ustrip(pos::ENU{Length}) = ustrip.([pos...]) |> ENU
+# # uconvert(u::Unitful.Units, pos::ENU{<:Length}) = uconvert.(u, pos)
+# uconvert(u::Unitful.Units, pos::ENU{<:Quantity}) = uconvert.(u, pos)
+# uconvert(u::Unitful.Units, map::AffineMap) = AffineMap(map.linear, uconvert.(u, map.translation))
+# uconvert(u::Unitful.Units, pt::Point) = uconvert.(u, pt)
+# ustrip(map::AffineMap) = AffineMap(map.linear, ustrip.(map.translation))
+# # Base.zero(u::T) where T <: Quantity = T(0)
 const DATUM=wgs84
-@unit pxl "px" Pixel 0.00345mm false
-Pixels = typeof(1.0pxl)
+# @unit pxl "px" Pixel 0.00345mm false
+# Pixels = typeof(1.0pxl)
 
 @enum Representation begin
   NEAR_CORNERS

@@ -1,13 +1,13 @@
 using Rotations
-using CoordinateTransformations, Geodesy
-using LinearAlgebra: dot, norm, I
+using CoordinateTransformations, Geodesy, GeodesyXYZExt
+using LinearAlgebra: dot, norm, I, normalize
 using Optim
 using ReTest
 using Tau
 using Roots
 using LeastSquaresOptim
 using Unitful: Length
-using StaticArrays: StaticVector, MVector
+using StaticArrays: StaticVector, MVector, SVector
 using Unitful: ustrip
 
 function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
@@ -18,7 +18,7 @@ function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVect
         focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
     end
     cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-    projected_points = map(Point2d ∘ cam_transform, points)
+    projected_points = map(Point2d ∘ cam_transform, SVector.(points))
     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
 end
 
@@ -29,13 +29,15 @@ function build_pnp_objective(
              rhos=nothing,
              thetas=nothing,
              feature_mask=[1;1;1],
+             only_x=false
     )
 
     f(C_t::StaticVector{3, Float64})::Float64 = let
         projected_points = project_points(AffineMap(cam_rotation, C_t), world_pts)
         ρ, θ = (!isnothing(rhos) || !isnothing(thetas) ? hough_transform(projected_points) : (nothing, nothing))
         @assert size(projected_points) == size(pixel_locations)
-        return sum(norm.(projected_points.-pixel_locations))
+        (only_x ? return sum(getindex.((projected_points .- pixel_locations), 1).^2)
+                : return sum(norm.(projected_points.-pixel_locations)))
     end
     return f
 end
@@ -46,11 +48,12 @@ function pnp(world_pts::Vector{ENU{Meters}},
              pixel_locations::Vector{Point2{Pixels}},
              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
              initial_guess::ENU{Meters} = ENU(-100.0m, 0m, 30m),
-             method=NelderMead()
+             method=NelderMead(),
+             only_x=false
              )
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
-    world_pts = ustrip.(m, world_pts)
-    pixel_locations = ustrip.(pxl, pixel_locations)
+    world_pts = map(p->ustrip.(m, p), world_pts) |> collect
+    pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
     initial_guess = ustrip.(m, initial_guess)
     cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
 
