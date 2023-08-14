@@ -15,6 +15,8 @@ using Unitful
 using Tau
 import Unitful: mm
 using Geodesy
+using GeodesyXYZExt
+import Distributions: Chisq, MvNormal
 
 """
 Some definitions:
@@ -32,22 +34,25 @@ For now we assume that all runway points are in the x-y plane.
 # includet("metrics.jl")
 
 const PX_SIZE = 0.00345*1e-3  # [m / px]
+# SFO measurements
+const Δx = 3500.0m
+const Δy = 61.0m
 
-runway_corners = Point3d[
-    [  0, -5, 0],
-    [  0,  5, 0],
-    [100, -5, 0],
-    [100,  5, 0]]
+runway_corners = XYZ{Meters}[
+    [0m, -Δy/2, 0m],
+    [0m,  Δy/2, 0m],
+    [Δx, -Δy/2, 0m],
+    [Δx,  Δy/2, 0m]]
 runway_corners_far = [3*(runway_corners[3] - runway_corners[1])+runway_corners[1],
                       3*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
 
-R_t_true = I(3)
+R_t_true = RotY(0.)
 
 fig = Figure()
 scene = LScene(fig[1, 1], show_axis=false, scenekw = (backgroundcolor=:gray, clear=true))
 # Error slider
 slidergrid =  SliderGrid(fig[2, 1],
-    (label="Error scale [px]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " pixels")),
+    (label="Error scale [px]", range = 0.0:0.25:5, startvalue=1.0, format=x->string(x, " pixels")),
     (label="Error scale [°]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " degrees")),
 )
 σ = lift(slidergrid.sliders[1].value) do x; x end
@@ -66,16 +71,16 @@ Label(toggle_grid[5, 1], "Scenario:")
 scenario_menu = Menu(toggle_grid[5, 2]; options=["near (300m)", "mid (1000m)", "far (6000m)"], default="mid (1000m)")
 #
 C_t_true = lift(scenario_menu.selection) do menu
-    menu == "near (300m)" && return Point3d([-300, 0, 10])
-    menu == "mid (1000m)"  && return Point3d([-1000, 0, 10])
-    menu == "far (6000m)"  && return Point3d([-6000, 0, 10])
+    menu == "near (300m)" && return XYZ([-300.0m, 0m, 10m])
+    menu == "mid (1000m)"  && return XYZ([-1000.0m, 0m, 10m])
+    menu == "far (6000m)"  && return XYZ([-6000.0m, 0m, 10m])
 end
-function project_points(cam_pose::AbstractAffineMap, points::Vector{Point3d})
+function project_points(cam_pose::AbstractAffineMap, points::Vector{XYZ{T}}) where {T<:Union{Float64, Meters}}
     focal_length = 25mm
     pixel_size = 0.00345mm
-    scale = focal_length / pixel_size |> upreferred  # solve units if necessary, i.e. [mm] / [m]
+    scale = focal_length / pixel_size |> upreferred  # solve units, i.e. [mm] / [m]
     cam_transform = cameramap(scale) ∘ LinearMap(RotY(-τ/4)) ∘ inv(cam_pose)
-    projected_points = map(cam_transform, points)
+    projected_points = map(Point2{Float64}∘cam_transform∘Point3{T}, points)
 end
 dims_2d_to_3d = LinearMap(1.0*I(3)[:, 1:2])
 dims_3d_to_2d = LinearMap(1.0*I(3)[1:2, :])
@@ -152,10 +157,10 @@ cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_s
 # inspector = DataInspector(scene)
 ## Draw runway and coordinate system
 # Normal runway rectangle
-lines!(scene, runway_corners[[1, 2, 4, 3, 1]])
+lines!(scene, map(p->ustrip.(m, p), runway_corners[[1, 2, 4, 3, 1]]))
 # Draw 3d runway lines into the distance
-lines!(scene, [runway_corners[1], runway_corners_far[1]]; color=:blue)
-lines!(scene, [runway_corners[2], runway_corners_far[2]]; color=:blue)
+lines!(scene, map(p->ustrip.(m, p), [runway_corners[1], runway_corners_far[1]]); color=:blue)
+lines!(scene, map(p->ustrip.(m, p), [runway_corners[2], runway_corners_far[2]]); color=:blue)
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
 arrows!(scene,
         fill(Point3d(0, 0, 0), 3),
@@ -168,23 +173,23 @@ arrows!(scene,  # larger coordinate system
         arrowsize=Vec3f(2, 2, 3)
         )
 # Plot runway surface
-surface!(scene, getindex.(runway_corners, 1),
-                getindex.(runway_corners, 2),
-                getindex.(runway_corners, 3))
+surface!(scene, ustrip.(m, getindex.(runway_corners, 1)),
+                ustrip.(m, getindex.(runway_corners, 2)),
+                ustrip.(m, getindex.(runway_corners, 3)))
 # Draw lines from corners to camera
 corner_lines = [lift(C_t_true) do C_t_true
                     [p, C_t_true]
                 end
                 for p in runway_corners]
 for l in corner_lines
-    lines!(scene, l)
+    lines!(scene, mapeach(p->ustrip.(m, p), l))
 end
 # Draw Projected points
-projected_points_global = @lift map($cam_pose_gt ∘ Translation([0;0;0.0025]) ∘ dims_2d_to_3d,
-                                    project_points($cam_pose_gt, runway_corners)) * PX_SIZE
-scatter!(scene, projected_points_global)
+# projected_points_global = @lift map($cam_pose_gt ∘ Translation([0;0;0.0025]) ∘ dims_2d_to_3d,
+#                                     project_points($cam_pose_gt, runway_corners)) * PX_SIZE
+# scatter!(scene, projected_points_global)
 # Set cam position
-update_cam!(scene.scene, Array(C_t_true[]).-[20.,0,0], Float32[0, 0, 0])
+update_cam!(scene.scene, ustrip.(m, C_t_true[].-XYZ(20.0m,0m,0m)), Float32[0, 0, 0])
 # Compute pose estimates
 feature_mask = lift(feature_toggles[1].active, feature_toggles[2].active, feature_toggles[3].active) do a, b, c
     Int[a;b;c]
@@ -203,6 +208,7 @@ only_x = Observable(false)
 std_box = Label(toggle_grid[6, 4], "")
 connect!(only_x_toggle.active, only_x)
 
+offdiag_indices(M::AbstractMatrix) = [ι for ι in CartesianIndices(M) if ι[1] ≠ ι[2]]
 opt_traces = []
 perturbed_pose_estimates = lift(cam_pose_gt,
                                 σ,
@@ -220,27 +226,39 @@ perturbed_pose_estimates = lift(cam_pose_gt,
     #                             initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
     #                             )
     #                         for _ in 1:num_pose_est)
-    sols = ThreadsX.collect(pnp(ENU{Meters}.(runway_corners .* 1m),
-                                Point2{Pixels}.((projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4]).*1pxl),
-                                RotY(0.);
-                                initial_guess = ENU{Meters}((Array(cam_pose_gt.translation)+10.0*randn(3))*1m),
-                                only_x=only_x
-                                )
-                            for _ in 1:num_pose_est)
+    Σ = ones(4);
+    D = MvNormal(zeros(4), σ^2*Σ)
+    sols = ThreadsX.collect(pnp(runway_corners,
+                Point2{Pixels}.((projected_points .+ noise_mask[[1,1,2,2]].*eachrow([rand(D) rand(D)])).*1pxl),
+                RotY(0.);
+                initial_guess = cam_pose_gt.translation,
+                only_x=only_x
+            )
+        for _ in 1:num_pose_est)
     global opt_traces = sols
-    pts = (Point3d∘Optim.minimizer).(sols)
+    pts = ((XYZ∘Optim.minimizer).(sols) * 1m)
     # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect
     pts
 end
-pose_samples = scatter!(scene, perturbed_pose_estimates;
+pose_samples = scatter!(scene, mapeach(p->ustrip.(m, p), perturbed_pose_estimates);
                         color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
 on(perturbed_pose_estimates) do ps
-    std_box.text = "std=$(round(std(getindex.(ps, 1)), digits=3))m"
+    # Compute 95% confidence interval for std. Assumes variables are from Normal distribution.
+    # See https://en.wikipedia.org/wiki/Standard_deviation#Confidence_interval_of_a_sampled_standard_deviation
+    s = std(getindex.(ps, 1))
+    n = length(ps)
+    k = n-1
+    D = Chisq(k)
+    α=0.05
+    lo = √(k * s^2 / quantile(D, 1-α/2))
+    hi = √(k * s^2 / quantile(D, α/2))
+    CI = Interval(round(m, lo, digits=3), round(m, hi, digits=3))
+    val = round(m, s, digits=3)
+    std_box.text = "std=$val ($CI)"
 end
 #
-"""  commented out for debug
 on(events(scene).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         plt, i = pick(scene)
@@ -253,7 +271,6 @@ on(events(scene).mousebutton, priority = 2) do event
     return Consume(false)
 end
 # make_error_bars_plot(rhs_grid[3, 1])
-"""
 
 
 # display(GLMakie.Screen(), make_fig_pnp_obj());
