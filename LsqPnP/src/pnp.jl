@@ -6,35 +6,67 @@ using ReTest
 using Tau
 using Roots
 using LeastSquaresOptim
+using LsqFit
 using Unitful: Length
-using StaticArrays: StaticVector, MVector, SVector
+using StaticArrays: StaticVector, MVector, SVector, MArray
 using Unitful: ustrip
+import LsqFit.DiffResults: DiffResult, MutableDiffResult
 
-function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
-                        points::Vector{ENU{T}}) where T<:Union{Length, Float64}
+function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
+                        points::Vector{T}) where T<:Union{ENU{T′}, XYZ{T′}} where T′<:Union{Meters, Float64} where T′′
     # projection expects z axis to point forward, so we rotate accordingly
     scale = let focal_length = 25mm,
                 pixel_size = 0.00345mm
         focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
     end
     cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-    projected_points = map(Point2d ∘ cam_transform, SVector.(points))
+    projected_points = map(Point2{T′′} ∘ cam_transform, Point3{T′}.(points))
     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
 end
 
+flatten_points(pts::Vector{<:StaticVector}) = stack(pts, dims=1)[:]
+unflatten_points(P::Type{<:StaticVector}, pts::Vector{Float64}) = P.(eachrow(reshape(pts, :, length(P))))
+
+Optim.minimizer(lsr::LsqFit.LsqFitResult) = lsr.param
+Optim.converged(lsr::LsqFit.LsqFitResult) = lsr.converged
+DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
+DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
+DiffResult(value::MArray, derivs::Tuple{Vararg{Union{Number, AbstractArray}}}) = MutableDiffResult(value, derivs)
+function pnp2(world_pts::Vector{T},
+              pixel_locations::Vector{Point2{Pixels}},
+              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
+              initial_guess::T = ENU(-100.0m, 0m, 30m),
+              ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
+    # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
+    world_pts = map(p->ustrip.(m, p), world_pts) |> collect
+    pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
+    initial_guess = ustrip.(m, initial_guess)
+    cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
+
+
+    model(world_pts_flat, pos::StaticVector{3, <:Real}) = let project(ps) = project_points(AffineMap(cam_rotation, pos), ps),
+                                                              unflatten_to_xyz(pts) = unflatten_points(XYZ{Float64}, pts)
+        f = flatten_points ∘ project ∘ unflatten_to_xyz
+        f(world_pts_flat)
+    end
+
+    fit = curve_fit(model, flatten_points(world_pts), flatten_points(pixel_locations), MVector(initial_guess); autodiff=:forward)
+    return fit
+end
+
 function build_pnp_objective(
-             world_pts::Vector{<:ENU},
+             world_pts::Vector{T},
              pixel_locations::Vector{<:Point2},
              cam_rotation::Rotation{3};
              rhos=nothing,
              thetas=nothing,
              feature_mask=[1;1;1],
              only_x=false
-    )
+    ) where T<:Union{ENU{Float64}, XYZ{Float64}}
 
-    f(C_t::StaticVector{3, Float64})::Float64 = let
+    Threads.threadid() == 1 && @debug (size(pixel_locations), size(world_pts))
+    function f(C_t::StaticVector{3, T}) where T
         projected_points = project_points(AffineMap(cam_rotation, C_t), world_pts)
-        ρ, θ = (!isnothing(rhos) || !isnothing(thetas) ? hough_transform(projected_points) : (nothing, nothing))
         @assert size(projected_points) == size(pixel_locations)
         (only_x ? return sum(getindex.((projected_points .- pixel_locations), 1).^2)
                 : return sum(norm.(projected_points.-pixel_locations)))
@@ -44,13 +76,13 @@ end
 
 Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
 Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
-function pnp(world_pts::Vector{ENU{Meters}},
+function pnp(world_pts::Vector{T},
              pixel_locations::Vector{Point2{Pixels}},
              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
-             initial_guess::ENU{Meters} = ENU(-100.0m, 0m, 30m),
+             initial_guess::T = ENU(-100.0m, 0m, 30m),
              method=NelderMead(),
              only_x=false
-             )
+             ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
     world_pts = map(p->ustrip.(m, p), world_pts) |> collect
     pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
@@ -62,23 +94,28 @@ function pnp(world_pts::Vector{ENU{Meters}},
                             cam_rotation)
     f_ = TwiceDifferentiable(f, MVector(1., 1, 1))
 
+    if Threads.threadid() == 1
+        @debug world_pts
+        @debug pixel_locations
+    end
     # initial_guess = typeof(initial_guess)(initial_guess[1], initial_guess[2], max(initial_guess[3], 1.0))
-    presolve = Optim.optimize(f_,
-                   MVector(initial_guess),
-                   method,
-                   # NewtonTrustRegion(),
-                   Optim.Options(f_tol=1e-7),
-                   autodiff=:forward,
-                   )
-    return presolve
-    # sol = LeastSquaresOptim.optimize(f,
-    #                Optim.minimizer(presolve),
-    #                LevenbergMarquardt();
-    #                lower=[-Inf, -Inf, 0],
+    # presolve = Optim.optimize(f_,
+    #                MVector(initial_guess),
+    #                method,
+    #                # NewtonTrustRegion(),
+    #                Optim.Options(f_tol=1e-7),
     #                autodiff=:forward,
-    #                g_tol=1e-7,
-    #                iterations=1_000,
     #                )
+    # return presolve
+    sol = LeastSquaresOptim.optimize(f,
+                   MVector(initial_guess),
+                   LevenbergMarquardt();
+                   # lower=[-Inf, -Inf, 0],
+                   autodiff=:forward,
+                   # f_tol=eps(Float32),
+                   x_tol=eps(Float32),
+                   # iterations=10,
+                   )
     # @assert f(Optim.minimizer(sol)) < 1e4 (sol, Optim.minimizer(sol))
     # (!isnothing(opt_traces) && push!(opt_traces, sol))
     # @debug sol
@@ -86,10 +123,10 @@ function pnp(world_pts::Vector{ENU{Meters}},
 end
 
 "Hough transform."
-function compute_rho_theta(p1, p2, p3)
+function compute_rho_theta(p1::Point2{T}, p2::Point2{T}, p3::Point2{T}) where T
     p4(λ) = p1 + λ*(p2-p1)
     λ = dot((p2-p1), (p3-p1)) / norm(p2-p1)^2
-    @assert isapprox(dot(p2-p1, p4(λ)-p3)/norm(p2), 0.; atol=1e-4) "$(dot(p2-p1, p4(λ)-p3))"
+    @assert isapprox(dot(p2-p1, p4(λ)-p3)/norm(p2), zero(T); atol=1e-4) "$(dot(p2-p1, p4(λ)-p3))"
     @debug λ, p4(λ)
     ρ = norm(p4(λ) - p3)
 
