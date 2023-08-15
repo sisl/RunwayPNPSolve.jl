@@ -31,7 +31,6 @@ Optim.minimizer(lsr::LsqFit.LsqFitResult) = lsr.param
 Optim.converged(lsr::LsqFit.LsqFitResult) = lsr.converged
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
 DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
-DiffResult(value::MArray, derivs::Tuple{Vararg{Union{Number, AbstractArray}}}) = MutableDiffResult(value, derivs)
 function pnp2(world_pts::Vector{T},
               pixel_locations::Vector{Point2{Pixels}},
               cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
@@ -43,6 +42,7 @@ function pnp2(world_pts::Vector{T},
     initial_guess = ustrip.(m, initial_guess)
     cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
 
+    (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
 
     model(world_pts_flat, pos::StaticVector{3, <:Real}) = let project(ps) = project_points(AffineMap(cam_rotation, pos), ps),
                                                               unflatten_to_xyz(pts) = unflatten_points(XYZ{Float64}, pts)
@@ -50,7 +50,8 @@ function pnp2(world_pts::Vector{T},
         f(world_pts_flat)
     end
 
-    fit = curve_fit(model, flatten_points(world_pts), flatten_points(pixel_locations), MVector(initial_guess); autodiff=:forward)
+    fit = curve_fit(model, flatten_points(world_pts), flatten_points(pixel_locations), MVector(initial_guess);
+                    autodiff=:forward, store_trace=true)
     return fit
 end
 
