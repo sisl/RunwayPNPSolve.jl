@@ -14,7 +14,7 @@ using Unzip
 using StructArrays
 using Unitful
 using Tau
-import Unitful: mm
+import Unitful: mm, rad
 using Geodesy
 using GeodesyXYZExt
 import Distributions: Chisq, MvNormal
@@ -233,6 +233,8 @@ perturbed_pose_estimates = lift(cam_pose_gt,
                                 corr_noise_toggle.active) do cam_pose_gt, σ, σ_angle, feature_toggles, noise_toggles, num_pose_est, corr_noise
     projected_points::Vector{Point2{Pixels}} = project_points(cam_pose_gt, runway_corners) .* 1pxl
     ρ, θ = hough_transform(ustrip.(projected_points))
+    # @show rad2deg.([θ[:lhs], θ[:rhs]])
+    # @show rad2deg.(θ[:lhs] - θ[:rhs] - τ/2)
 
     feature_mask = feature_toggles[[1, 1, 2, 2]]
     noise_mask = noise_toggles[[1, 1, 2, 2]]
@@ -246,14 +248,17 @@ perturbed_pose_estimates = lift(cam_pose_gt,
                                      D = MvNormal(zeros(4), σ^2*Σ)
         noise_mask.*eachrow([rand(D) rand(D)]).*1pxl
     end
+    sample_angular_noise() = σ_angle * 1rad * rand()
     sample_pos_noise() = 1 * randn(3) .* 1m
-    sols = ThreadsX.collect(pnp2(runway_corners[feature_mask],
-                                (projected_points .+ sample_measurement_noise())[feature_mask],
+    sols = ThreadsX.collect(LsqPnP.pnp3(
+                                runway_corners[[1, 2]],
+                                (projected_points .+ sample_measurement_noise())[[1, 2]],
+                                (θ[:lhs] - θ[:rhs] - τ/2)*1rad + sample_angular_noise(),
                                 RotY(0.);
                                 initial_guess = cam_pose_gt.translation + sample_pos_noise())
                             for _ in 1:num_pose_est)
     global opt_traces = sols
-    pts = ((XYZ∘Optim.minimizer).(sols) * 1m)
+    pts = ((XYZ∘Optim.minimizer).(sols))
     # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect

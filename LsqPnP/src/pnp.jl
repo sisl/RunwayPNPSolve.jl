@@ -24,6 +24,10 @@ function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVect
     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
 end
 
+### Solution using Levenberg-Marquardt algo from LsqFit.jl
+# I've tried before to use LeastSquaresOptim but got bad results.
+# LsqFit expects vector valued in- and outputs, so we have to flatten/unflatten the vector of points.
+# Also, we overload the Optim.minimizer/converged functions for easier back-and-forth between Optim.jl and LsqFit.jl.
 flatten_points(pts::Vector{<:StaticVector}) = stack(pts, dims=1)[:]
 unflatten_points(P::Type{<:StaticVector}, pts::Vector{Float64}) = P.(eachrow(reshape(pts, :, length(P))))
 
@@ -44,13 +48,17 @@ function pnp2(world_pts::Vector{T},
 
     (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
 
-    model(world_pts_flat, pos::StaticVector{3, <:Real}) = let project(ps) = project_points(AffineMap(cam_rotation, pos), ps),
-                                                              unflatten_to_xyz(pts) = unflatten_points(XYZ{Float64}, pts)
+    function model(world_pts_flat, pos::StaticVector{3, <:Real})
+        project(pts) = project_points(AffineMap(cam_rotation, pos), pts)
+        unflatten_to_xyz(pts) = unflatten_points(XYZ{Float64}, pts)
         f = flatten_points ∘ project ∘ unflatten_to_xyz
         f(world_pts_flat)
     end
 
-    fit = curve_fit(model, flatten_points(world_pts), flatten_points(pixel_locations), MVector(initial_guess);
+    fit = curve_fit(model,
+                    flatten_points(world_pts),
+                    flatten_points(pixel_locations),
+                    MVector(initial_guess);
                     autodiff=:forward, store_trace=true)
     return fit
 end
@@ -160,3 +168,73 @@ function hough_transform(projected_points)  # front left, front right, back left
     θ = (; lhs=ρ_θ_lhs[2], rhs=ρ_θ_rhs[2])
     ρ, θ
 end
+
+
+
+flatten_points(pts::Pair{T, T}) where T<:StaticVector = stack(pts, dims=1)[:]
+function pnp_threshold_width(
+        world_pts::Pair{T, T},
+        pixel_locations::Pair{Point2{Pixels}, Point2{Pixels}},
+        Y::Meters, Z::Meters,
+        cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
+        initial_guess::T = ENU(-100.0m, 0m, 30m),
+        ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
+    # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
+    world_pts = map(p->ustrip.(m, p), world_pts) |> collect
+    pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
+    initial_guess = ustrip.(m, initial_guess)
+    cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
+    Y, Z = ustrip.(m, [Y, Z])
+
+    (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
+
+    function model(world_pts_flat, X::StaticVector{1, <:Real})
+        pos = SVector(X[1], Y, Z)
+        project(pts) = project_points(AffineMap(cam_rotation, pos), pts)
+        unflatten_to_xyz(pts) = unflatten_points(XYZ{Float64}, pts)
+        get_width(p_lhs::Point2, p_rhs::Point2) = p_rhs[1] - p_lhs[1]
+        f = splat(get_width) ∘ project ∘ unflatten_to_xyz
+        MVector(f(world_pts_flat), )
+    end
+
+    fit = curve_fit(model,
+                    flatten_points(world_pts),
+                    SVector(pixel_locations[2][1] - pixel_locations[1][1], ),
+                    MVector(initial_guess.x, );
+                    autodiff=:forward, store_trace=true)
+    return fit.param[1]*1m
+end
+
+function pnp_height_from_angle(
+        angle::Angle,
+        world_pts::Vector{T}) :: Meters where {T<:Union{ENU{Meters}, XYZ{Meters}}}
+    Δy = abs(world_pts[2].y - world_pts[1].y)
+    H = 1/2 * Δy / tan(angle/2)
+    return H
+end
+
+function pnp3(world_pts::Vector{T},
+              pixel_locations::Vector{Point2{Pixels}},
+              sideline_angle::Angle,
+              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
+              initial_guess::T = ENU(-100.0m, 0m, 30m),
+              ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
+    Y = 0.0m
+    Z = pnp_height_from_angle(
+        sideline_angle,
+        world_pts
+    )
+    X = pnp_threshold_width(
+            Pair(world_pts[1], world_pts[2]),
+            Pair(pixel_locations[1], pixel_locations[2]),
+            Y, Z,
+            cam_rotation;
+            initial_guess)
+    return PNP3Sol((XYZ(X, Y, Z), ))
+end
+
+PNP3Sol = @NamedTuple begin
+  pos::XYZ{Meters}
+end
+Optim.minimizer(sol::PNP3Sol) = sol.pos
+Optim.converged(sol::PNP3Sol) = true
