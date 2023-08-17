@@ -1,5 +1,6 @@
 using Revise
 using PNPSolve
+using PNPSolve.LsqPnP: pnp2
 # using CameraModels
 using LinearAlgebra
 using Rotations
@@ -42,7 +43,8 @@ runway_corners = XYZ{Meters}[
     [0m, -Δy/2, 0m],
     [0m,  Δy/2, 0m],
     [Δx, -Δy/2, 0m],
-    [Δx,  Δy/2, 0m]]
+    [Δx,  Δy/2, 0m],
+]
 runway_corners_far = [3*(runway_corners[3] - runway_corners[1])+runway_corners[1],
                       3*(runway_corners[4] - runway_corners[2])+runway_corners[2]]
 
@@ -55,20 +57,21 @@ slidergrid =  SliderGrid(fig[2, 1],
     (label="Error scale [px]", range = 0.0:0.25:5, startvalue=1.0, format=x->string(x, " pixels")),
     (label="Error scale [°]", range = 0.0:0.25:5, startvalue=0.5, format=x->string(x, " degrees")),
 )
-σ = lift(slidergrid.sliders[1].value) do x; x end
-σ_angle = lift(slidergrid.sliders[2].value) do x; deg2rad(x) end
+σ = slidergrid.sliders[1].value
+σ_angle = @lift deg2rad($(slidergrid.sliders[2].value))
 rhs_grid = GridLayout(fig[1, 2]; tellheight=false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
 Label(toggle_grid[1, 2], "Use feature"); Label(toggle_grid[1, 3], "Add noise");
 # Set up noise toggles, scenario menu, num pose estimates
-feature_toggles = [Toggle(toggle_grid[1+i, 2]; active=true) for i in 1:3]
-noise_toggles = [Toggle(toggle_grid[1+i, 3]; active=true) for i in 1:3]
+feature_toggles_ = [Toggle(toggle_grid[1+i, 2]; active=true) for i in 1:3]
+noise_toggles_ = [Toggle(toggle_grid[1+i, 3]; active=true) for i in 1:3]
 toggle_labels = let labels = ["Near corners", "Far corners", "Edges"]
     [Label(toggle_grid[1+i, 1], labels[i]) for i in 1:3]
 end
 ## Set up scenario, which affects cam position and therefore all the projections
 Label(toggle_grid[5, 1], "Scenario:")
-scenario_menu = Menu(toggle_grid[5, 2]; options=["near (300m)", "mid (1000m)", "far (6000m)"], default="mid (1000m)")
+scenario_menu = Menu(toggle_grid[5, 2]; options=["near (300m)", "mid (1000m)", "far (6000m)"],
+                                        default="far (6000m)")
 #
 C_t_true = lift(scenario_menu.selection) do menu
     menu == "near (300m)" && return XYZ([-300.0m, 0m, 10m])
@@ -92,7 +95,7 @@ function unzip_obs(obs::Observable{<:Tuple})
           for i in eachindex(obs[])])
 end
 "Map function over each element in Observable, i.e. mapeach(x->2*x, Observable([1, 2, 3])) == Observable([2, 4, 6])"
-mapeach(f, obs::Observable{<:Vector}) = map(el->map(f, el), obs)
+mapeach(f, obs::Observable{<:AbstractVector}) = map(el->map(f, el), obs)
 # cam_transform = @lift PerspectiveMap() ∘ inv($Cam_translation)
 # projected_points = @lift map($cam_transform, runway_corners)
 # projected_points_global = @lift map($Cam_translation ∘ AffineMap(dims_2d_to_3d, Float64[0;0;1]), $projected_points)
@@ -142,11 +145,16 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap};
     end
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_lhs))
     lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, ρ_θ_line_rhs))
+    return cam_view_ax
 end
 projections_grid = GridLayout(rhs_grid[2, 1])
-make_perspective_plot(projections_grid[1, 1], cam_pose_gt; title="Ground truth perspective")
+
 pose_guess = Observable(AffineMap(R_t_true, C_t_true[]))
-make_perspective_plot(projections_grid[2, 1], pose_guess; title="Perturbed perspective")
+let
+    pplot1 = make_perspective_plot(projections_grid[1, 1], cam_pose_gt; title="Ground truth perspective")
+    pplot2 = make_perspective_plot(projections_grid[2, 1], pose_guess; title="Perturbed perspective")
+    linkaxes!(pplot1, pplot2)
+end
 ## and of projection
 ## Set up camera
 cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_shift_lookat=false,
@@ -159,8 +167,8 @@ cam3d!(scene; near=0.01, far=1e9, rotation_center=:eyeposition, cad=true, zoom_s
 # Normal runway rectangle
 lines!(scene, map(p->ustrip.(m, p), runway_corners[[1, 2, 4, 3, 1]]))
 # Draw 3d runway lines into the distance
-lines!(scene, map(p->ustrip.(m, p), [runway_corners[1], runway_corners_far[1]]); color=:blue)
-lines!(scene, map(p->ustrip.(m, p), [runway_corners[2], runway_corners_far[2]]); color=:blue)
+# lines!(scene, map(p->ustrip.(m, p), [runway_corners[1], runway_corners_far[1]]); color=:blue)
+# lines!(scene, map(p->ustrip.(m, p), [runway_corners[2], runway_corners_far[2]]); color=:blue)
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
 arrows!(scene,
         fill(Point3d(0, 0, 0), 3),
@@ -182,7 +190,7 @@ corner_lines = [lift(C_t_true) do C_t_true
                 end
                 for p in runway_corners]
 for l in corner_lines
-    lines!(scene, mapeach(p->ustrip.(m, p), l))
+    lines!(scene, mapeach(p->ustrip.(m, p), l), color=(:black, 0.3))
 end
 # Draw Projected points
 # projected_points_global = @lift map($cam_pose_gt ∘ Translation([0;0;0.0025]) ∘ dims_2d_to_3d,
@@ -191,11 +199,11 @@ end
 # Set cam position
 update_cam!(scene.scene, ustrip.(m, C_t_true[].-XYZ(20.0m,0m,0m)), Float32[0, 0, 0])
 # Compute pose estimates
-feature_mask = lift(feature_toggles[1].active, feature_toggles[2].active, feature_toggles[3].active) do a, b, c
-    Int[a;b;c]
+feature_toggles = lift(feature_toggles_[1].active, feature_toggles_[2].active, feature_toggles_[3].active) do near, far, angle
+    Bool[near, far, angle]
 end
-noise_mask = lift(noise_toggles[1].active, noise_toggles[2].active, noise_toggles[3].active) do a, b, c
-    Int[a;b;c]
+noise_toggles = lift(noise_toggles_[1].active, noise_toggles_[2].active, noise_toggles_[3].active) do near, far, angle
+    Bool[near, far, angle]
 end
 Label(toggle_grid[6, 1], "Num pose estimates: ")
 num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
@@ -203,38 +211,47 @@ num_pose_est_box = Textbox(toggle_grid[6, 2], stored_string = "100",
 num_pose_est = lift(num_pose_est_box.stored_string) do str
     tryparse(Int, str)
 end
-only_x_toggle = Toggle(toggle_grid[6, 3]; active=false)
-only_x = Observable(false)
-std_box = Label(toggle_grid[6, 4], "")
-connect!(only_x_toggle.active, only_x)
+Label(toggle_grid[7, 1], "Correlated noise")
+corr_noise_toggle = Toggle(toggle_grid[7, 2]; active=false)
+# corr_noise = Observable(false)
+Label(toggle_grid[8, 1], "Mean err")
+Label(toggle_grid[9, 1], "Std err")
+mean_box = Label(toggle_grid[8, 2], "")
+std_box = Label(toggle_grid[9, 2], "")
+# connect!(corr_noise_toggle.active, corr_noise)
+
+scatter!(scene.scene, mapeach(ustrip, C_t_true); color=:green, markersize=27)
 
 offdiag_indices(M::AbstractMatrix) = [ι for ι in CartesianIndices(M) if ι[1] ≠ ι[2]]
 opt_traces = []
 perturbed_pose_estimates = lift(cam_pose_gt,
                                 σ,
                                 σ_angle,
-                                feature_mask,
-                                noise_mask,
+                                feature_toggles,
+                                noise_toggles,
                                 num_pose_est,
-                                only_x) do cam_pose_gt, σ, σ_angle, feature_mask, noise_mask, num_pose_est, only_x
-    projected_points = project_points(cam_pose_gt, runway_corners)
-    ρ, θ = hough_transform(projected_points)
-    # sols = ThreadsX.collect(pnp(runway_corners, projected_points .+ σ*noise_mask[[1,1,2,2]].*[randn(2) for _ in 1:4];
-    #                             rhos  =[ρ[:lhs]; ρ[:rhs]].+σ*noise_mask[3].*randn(2),
-    #                             thetas=[θ[:lhs]; θ[:rhs]].+σ_angle*noise_mask[3].*randn(2),
-    #                             feature_mask=feature_mask,
-    #                             initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
-    #                             )
-    #                         for _ in 1:num_pose_est)
-    Σ = ones(4);
-    D = MvNormal(zeros(4), σ^2*Σ)
-    sols = ThreadsX.collect(pnp(runway_corners,
-                Point2{Pixels}.((projected_points .+ noise_mask[[1,1,2,2]].*eachrow([rand(D) rand(D)])).*1pxl),
-                RotY(0.);
-                initial_guess = cam_pose_gt.translation,
-                only_x=only_x
-            )
-        for _ in 1:num_pose_est)
+                                corr_noise_toggle.active) do cam_pose_gt, σ, σ_angle, feature_toggles, noise_toggles, num_pose_est, corr_noise
+    projected_points::Vector{Point2{Pixels}} = project_points(cam_pose_gt, runway_corners) .* 1pxl
+    ρ, θ = hough_transform(ustrip.(projected_points))
+
+    feature_mask = feature_toggles[[1, 1, 2, 2]]
+    noise_mask = noise_toggles[[1, 1, 2, 2]]
+    make_corr_matrix(dim, offdiag_val) = begin
+        Σ = Matrix{Float64}(I(dim))
+        Σ[offdiag_indices(Σ)] .= offdiag_val
+        Σ
+    end
+
+    sample_measurement_noise() = let Σ = (corr_noise ? make_corr_matrix(4, 0.9) : Matrix{Float64}(I(4))),
+                                     D = MvNormal(zeros(4), σ^2*Σ)
+        noise_mask.*eachrow([rand(D) rand(D)]).*1pxl
+    end
+    sample_pos_noise() = 1 * randn(3) .* 1m
+    sols = ThreadsX.collect(pnp2(runway_corners[feature_mask],
+                                (projected_points .+ sample_measurement_noise())[feature_mask],
+                                RotY(0.);
+                                initial_guess = cam_pose_gt.translation + sample_pos_noise())
+                            for _ in 1:num_pose_est)
     global opt_traces = sols
     pts = ((XYZ∘Optim.minimizer).(sols) * 1m)
     # may filter to contain pose outliers
@@ -244,7 +261,9 @@ perturbed_pose_estimates = lift(cam_pose_gt,
 end
 pose_samples = scatter!(scene, mapeach(p->ustrip.(m, p), perturbed_pose_estimates);
                         color=map(x->(x ? :blue : :red), Optim.converged.(opt_traces)))
-on(perturbed_pose_estimates) do ps
+lift(perturbed_pose_estimates, C_t_true) do ps, pos
+    μ = mean(getindex.(ps, 1) .- pos[1])
+    mean_box.text = "$(round(m, μ; digits=3))"
     # Compute 95% confidence interval for std. Assumes variables are from Normal distribution.
     # See https://en.wikipedia.org/wiki/Standard_deviation#Confidence_interval_of_a_sampled_standard_deviation
     s = std(getindex.(ps, 1))
@@ -256,21 +275,21 @@ on(perturbed_pose_estimates) do ps
     hi = √(k * s^2 / quantile(D, α/2))
     CI = Interval(round(m, lo, digits=3), round(m, hi, digits=3))
     val = round(m, s, digits=3)
-    std_box.text = "std=$val ($CI)"
+    std_box.text = "$val ($CI)"
 end
 #
 on(events(scene).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         plt, i = pick(scene)
-        @show plt, plt==pose_samples, i
+        # @show plt, plt==pose_samples, i
         if !isnothing(plt) && plt==pose_samples
-            @show opt_traces[i]
-            pose_guess[] = AffineMap(R_t_true, Point3d(Optim.minimizer(opt_traces[i])))
+            @info opt_traces[i]
+            pose_guess[] = AffineMap(R_t_true, XYZ{Meters}(Optim.minimizer(opt_traces[i]).*1m))
         end
     end
     return Consume(false)
 end
-# make_error_bars_plot(rhs_grid[3, 1])
+# PNPSolve.make_error_bars_plot(rhs_grid[3, 1])
 
 
 # display(GLMakie.Screen(), make_fig_pnp_obj());
