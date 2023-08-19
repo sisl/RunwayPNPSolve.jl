@@ -18,4 +18,17 @@ using CoordinateTransformations
 
     proj = make_projection_fn(AffineMap(RotY(0.0), XYZ(-1.0m, 0.0m, 0.0m)))
     @test proj(XYZ(1.0m, 0.0m, 0.0m)) == ImgProj{Pixels}(0.0px, 0.0px)
+
+    rc = RunwayCorners(XYZ{Meters})((
+        XYZ(1.0m, 0.0m, 0.0m),
+        XYZ(1.0m, 0.0m, 0.0m),
+        XYZ(1.0m, 0.0m, 0.0m),
+        XYZ(1.0m, 0.0m, 0.0m),
+    ))
+    @test proj(rc) == RunwayCorners(ImgProj{Pixels})((
+        ImgProj(0.0px, 0.0px),
+        ImgProj(0.0px, 0.0px),
+        ImgProj(0.0px, 0.0px),
+        ImgProj(0.0px, 0.0px),
+    ))
 end

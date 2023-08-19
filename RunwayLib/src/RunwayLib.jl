@@ -41,8 +41,19 @@ cameramap(::Val{N}) where {N} = ProjectionMap{N}()
 cameramap(::Val{N}, scale::Number) where {N} =
     LinearMap(UniformScaling(scale)) ∘ ProjectionMap{N}()
 
+
 const ImgProj{T} = Point2{T}
 
+"Function to produce a NamedTuple type.
+
+Similar to a struct, but call with () instead of {} for type param. Benefit: We can broadcast over `values(tpl)`.
+"
+RunwayCorners(::Type{T}) where {T<:Union{XYZ{Meters},ImgProj{Pixels}}} = @NamedTuple begin
+    near_left::T
+    near_right::T
+    far_left::T
+    far_right::T
+end
 
 function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},XYZ{Meters}})
     scale = let focal_length = 25mm, pixel_size = 0.00345mm / 1px
@@ -51,8 +62,11 @@ function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},XYZ{Meters
     cam_transform = cameramap(Val(1), scale) ∘ inv(cam_pose)
     proj(p::XYZ{Meters})::ImgProj{Pixels} =
         (ImgProj{Pixels} ∘ cam_transform ∘ Point3{Meters})(p)
+    proj(rc::RunwayCorners(XYZ{Meters}))::RunwayCorners(ImgProj{Pixels}) =
+        RunwayCorners(ImgProj{Pixels})(proj.(values(rc)))
     return proj
 end
 
-export ImgProj, make_projection_fn
+
+export ImgProj, RunwayCorners, make_projection_fn
 end # module RunwayLib
