@@ -1,0 +1,19 @@
+name = "RunwayLib"
+uuid = "21826f37-226f-4b4e-8327-0e174ca2fff2"
+authors = ["Romeo Valentin <romeo.valentin.int@airbus-sv.com>"]
+version = "0.1.0"
+
+[deps]
+CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
+GeodesyXYZExt = "987ad435-e993-44fa-9c05-fce934ed82f8"
+GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
