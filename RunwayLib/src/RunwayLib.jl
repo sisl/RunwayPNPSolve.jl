@@ -7,7 +7,7 @@ import StaticArraysCore: StaticVector
 using GeometryBasics
 using GeodesyXYZExt
 using Unitful, Unitful.DefaultSymbols
-import Unitful: Units, ustrip
+import Unitful: Units, ustrip, register
 using GeometryBasics
 import LinearAlgebra: UniformScaling
 
@@ -30,13 +30,13 @@ Pixels = typeof(1.0px)
     to get the projection with x-axis forward.
 """
 struct ProjectionMap{N} end
-for i = 1:3
-    idx = filter(!=(i), axes(SVector{3})[1])
-    @eval function project(::ProjectionMap{$i}, svec::StaticVector{3,T}) where {T}
-        return SVector{2,T}(svec[$idx]) * inv(svec[$i])
-    end
+getaxis(::ProjectionMap{N}) where {N} = N
+function (pmap::ProjectionMap)(svec::StaticVector{3,T}) where {T}
+    N = getaxis(pmap)
+    idx = filter(!=(N), axes(svec)[1])
+    proj = (svec[idx]) * inv(svec[N])
+    return ImgProj(proj)
 end
-(pmap::ProjectionMap)(svec::StaticVector{3,T}) where {T} = project(pmap, svec)
 cameramap(::Val{N}) where {N} = ProjectionMap{N}()
 cameramap(::Val{N}, scale::Number) where {N} =
     LinearMap(UniformScaling(scale)) ∘ ProjectionMap{N}()
@@ -68,5 +68,10 @@ function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},XYZ{Meters
 end
 
 
+function __init__()
+    Unitful.register(RunwayLib)
+end
+
 export ImgProj, RunwayCorners, make_projection_fn
+export Angle, Meters, Pixels, px
 end # module RunwayLib
