@@ -1,18 +1,7 @@
 ## construct pose estimate errors
-function make_error_bars_plot(error_plots_grid)
-    errors_obs = lift(cam_pose_gt) do cam_pose_gt
-        projected_points = project_points(cam_pose_gt, runway_corners)
-        ρ, θ = hough_transform(projected_points)
-        local num_pose_est = 100
-        log_errs = LinRange(-10:0.5:-5)
-        errs = exp.(log_errs)
-        function compute_means_and_stds(σ)
-            sols = [pnp(runway_corners, projected_points .+ σ.*[randn(2) for _ in 1:4];
-                        rhos  =[ρ[:lhs]; ρ[:rhs]].+σ.*randn(2),
-                        thetas=[θ[:lhs]; θ[:rhs]].+σ_angle.*randn(2),
-                        initial_guess = Array(cam_pose_gt.translation)+10.0*randn(3),
-                        )
-                    for _ in 1:num_pose_est]
+function make_error_bars_plot(error_plots_grid, cam_pose_est, sols)
+    errors_obs = lift(cam_pose_gt, sols) do cam_pose_gt, sols
+        function compute_means_and_stds(sols)
             pts = (Point3d∘Optim.minimizer).(filter(Optim.converged, sols))
             Δ = (pts .- cam_pose_gt.translation)
             Δ = map(p->abs.(p), Δ)
@@ -23,7 +12,7 @@ function make_error_bars_plot(error_plots_grid)
             (; x=μ_x, y=μ_y, z=μ_z), (; x=std_x, y=std_y, z=std_z), (; x=q5_x, y=q5_y, z=q5_z), (; x=q95_x, y=q95_y, z=q95_z)
         end
         means, stds, q5s, q95s = begin
-            means_, stds_, q5s_, q95s_ = unzip(ThreadsX.map(σ->compute_means_and_stds(σ), errs))  # Array of tuples{:x,:y,:z}
+            means_, stds_, q5s_, q95s_ = unzip(compute_means_and_stds(sols))  # Array of tuples{:x,:y,:z}
             # means_, stds_ = unzip(compute_means_and_stds.(errs))  # Array of tuples{:x,:y,:z}
             StructArray(means_), StructArray(stds_), StructArray(q5s_), StructArray(q95s_)  # tuple{:x,:y,:z} of arrays (view)
         end

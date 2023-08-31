@@ -6,12 +6,15 @@ using InteractiveUtils
 
 # ╔═╡ 88ff9edf-045b-4273-8398-32acac3b0ebf
 # ╠═╡ show_logs = false
-import Pkg; Pkg.activate("/Users/romeovalentin/Documents/PNPSolve"); using Revise # don't use Pluto environment
+import Pkg; Pkg.activate("RunwayExample", shared=true);  # don't use Pluto environment
+
+# ╔═╡ 30728793-341c-4898-8ff4-c2cf547c40fc
+Pkg.develop(path="/Users/romeovalentin/Documents/PNPSolve"); using Revise
 
 # ╔═╡ 3f9c4bfe-d617-4e7f-8b48-35f4dda75e97
 begin
 using DataFrames
-using GeometryBasics
+# using GeometryBasics
 using StatsBase
 using Match
 using Tau
@@ -20,13 +23,25 @@ using GLMakie
 using CoordinateTransformations, Rotations
 # using Revise
 using Distributions
-using Plots, StatsPlots
+#using Plots, StatsPlots
 using Random: randn!
 using Geodesy
 using Unitful, Unitful.DefaultSymbols
 using Optim
 ("Some other imports (hidden).")
 end
+
+# ╔═╡ ad33c971-4068-42a5-9ed9-b04a09617981
+using TileProviders
+
+# ╔═╡ 012d1b6b-34c9-41e5-92b1-edaddb40e2b1
+Pkg.status()
+
+# ╔═╡ 53891808-62ad-467b-b1d6-3ef33931aa4a
+import Tyler
+
+# ╔═╡ 08d4b51f-6550-4082-9a28-950a8b16a553
+import MapTiles: project, wgs84, web_mercator, WGS84, WebMercator; import MapTiles
 
 # ╔═╡ 34e85343-c69d-4fe9-a1e8-ba1afe87482a
 import PNPSolve: get_unique_runways, construct_runway_corners, angle_to_ENU,
@@ -53,18 +68,23 @@ begin
 runways_df::DataFrame = get_unique_runways(
 	runway,
 	runway_file="/Users/romeovalentin/Documents/PNPSolve/data/2307 A3 Reference Data_v2.xlsx")
-origin::LLA = LLA(runways_df[2, ["THR Lat", "THR Long", "THR Elev"]]...)
-runway_bearing = angle_to_ENU(runways_df[2, "True Bearing"]°)
+origin::LLA = LLA(runways_df[1, ["THR Lat", "THR Long", "THR Elev"]]...)
+runway_bearing = angle_to_ENU(runways_df[1, "True Bearing"]°)
 thresholds::Vector{ENU{Meters}}, corners::Vector{ENU{Meters}} =
 	compute_thresholds_and_corners_in_ENU(runways_df, origin)
 end
+
+# ╔═╡ eda68c0e-b64e-4668-922f-4a8ac86b6f3b
+md"""
+Let's plot the computed corner points into the Google satelite view.
+(Note that we don't know the runway length...)
+"""
 
 # ╔═╡ 64af8590-e4fd-4dae-805f-ecd672ff31ca
 # ╠═╡ show_logs = false
 begin
 #using LightOSM
 #using OSMMakie
-using Tyler
 
 area = compute_LLA_rectangle(origin, (; x=(-1500.0m, 3000.0m),
                                         y=(-1500.0m, 3000.0m)))
@@ -91,16 +111,16 @@ end
 
 loc = Rect2f(area.minlon, area.minlat, 
 	         area.maxlon-area.minlon, area.maxlat-area.minlat)
-using Tyler
-import Tyler.TileProviders
+#using Tyler
+#import Tyler.TileProviders
 # tyler = Tyler.Map(loc)
 tyler = Tyler.Map(loc; provider=TileProviders.Google())
 # osmplot!(tyler.axis, osm)
 
-import MapTiles: project, wgs84, web_mercator, WGS84, WebMercator
-project(p::LatLon, from::WGS84, to::WebMercator) = 
-	project(Point2f(p.lon, p.lat), wgs84, web_mercator)
-function project(p::ENU, origin::LLA, to::WebMercator)
+#import MapTiles: project, wgs84, web_mercator, WGS84, WebMercator
+MapTiles.project(p::LatLon, from::WGS84, to::WebMercator) = 
+	MapTiles.project(Point2f(p.lon, p.lat), wgs84, web_mercator)
+function MapTiles.project(p::ENU, origin::LLA, to::WebMercator)
 	LatLon2WebMerc(p::LatLon) = project(p, wgs84, web_mercator)
 	proj = LatLon2WebMerc ∘ LatLon ∘ LLAfromENU(origin, DATUM)
 	proj(p)
@@ -111,15 +131,9 @@ let corners = ustrip.(corners)
 				   color=:red)
 end
 
-import MapTiles
+#import MapTiles
 tyler
 end
-
-# ╔═╡ eda68c0e-b64e-4668-922f-4a8ac86b6f3b
-md"""
-Let's plot the computed corner points into the Google satelite view.
-(Note that we don't know the runway length...)
-"""
 
 # ╔═╡ 4cf5468e-3bae-4abc-994e-e29c0c10667a
 md"""
@@ -213,14 +227,19 @@ display(tyler.figure)
 
 # ╔═╡ Cell order:
 # ╠═88ff9edf-045b-4273-8398-32acac3b0ebf
-# ╟─3f9c4bfe-d617-4e7f-8b48-35f4dda75e97
+# ╠═012d1b6b-34c9-41e5-92b1-edaddb40e2b1
+# ╠═30728793-341c-4898-8ff4-c2cf547c40fc
+# ╠═3f9c4bfe-d617-4e7f-8b48-35f4dda75e97
+# ╠═53891808-62ad-467b-b1d6-3ef33931aa4a
+# ╠═08d4b51f-6550-4082-9a28-950a8b16a553
 # ╟─34e85343-c69d-4fe9-a1e8-ba1afe87482a
 # ╟─d17f6850-521a-4af2-954c-38c6606919f3
 # ╠═7b870a89-0ced-45f9-8d4e-d8574c122b89
 # ╟─75fd79b1-a39f-4a99-b0a7-6e24dd339feb
 # ╠═c2cb059e-35a4-4cc8-b619-f4b584e37df1
 # ╟─eda68c0e-b64e-4668-922f-4a8ac86b6f3b
-# ╟─64af8590-e4fd-4dae-805f-ecd672ff31ca
+# ╠═ad33c971-4068-42a5-9ed9-b04a09617981
+# ╠═64af8590-e4fd-4dae-805f-ecd672ff31ca
 # ╟─4cf5468e-3bae-4abc-994e-e29c0c10667a
 # ╠═e5a830b0-9a02-4d60-8e6c-8211fa97312d
 # ╟─73541eb9-6d34-4a54-88f2-8292fa633aa7

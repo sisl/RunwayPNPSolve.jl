@@ -58,14 +58,14 @@ Let's load and slightly wrangle it.
 
 
 # ╔═╡ 89123779-3cca-4540-955e-3ab03750a671
-datafile = (false ? 
-	"/tmp/trl_resultsKSJC.csv" :      # cluster2:/home/matt.sorgenfrei/vnv_results/trl_resultsKSJC.csv
-	"/tmp/26_trajectories_concat.csv" # /mnt/data1/vnv/staging/romeo/csv_v2/26_trajectories_concat.csv
-)
+datafile = "/tmp/vnv_with_manual_Q3_pre_release.csv"  # cluster2:/home/romeo.valentin.int/vnv_processing
+
+# ╔═╡ c2c14f04-6dd1-45b9-800e-c59bed284248
+only_manual = true
 
 # ╔═╡ 2ca9aebe-95f5-49a8-ada2-a6e56712a8ab
 df_full = let df = CSV.read(datafile, DataFrame)
-    transform(df,
+    transform!(df,
         # make "unitful"
         :gt_translation_x=>ByRow(Meters),
         :gt_translation_y=>ByRow(Meters),
@@ -79,7 +79,9 @@ df_full = let df = CSV.read(datafile, DataFrame)
         ) => :vertical_angle;
         renamecols=false  # basically "in-place"
     )
-end;
+	(only_manual  && dropmissing!(df, "manual_top_left_x"))
+	df
+end; first(df_full, 3)
 
 # ╔═╡ c3f2d8f8-04fd-4f45-af0d-eaceb849bee5
 df_in_service_volume = filter(in_service_volume, df_full);
@@ -88,7 +90,7 @@ df_in_service_volume = filter(in_service_volume, df_full);
 @info "num samples in service volume = $(nrow(df_in_service_volume))"
 
 # ╔═╡ 25c74665-4c6d-4872-8e4e-86cdbc76ebf6
-function unfold_df(df)
+function unfold_df(df, only_manual=only_manual)
 """Bring dataframe into stacked form for better processing.
 
 The dataframe by default has columns like `gt_vertices_runway_top_left_corner_x`, `pred_vertices_bottom_right_y`, etc., aggregating predictions for each corner in one row.
@@ -96,14 +98,18 @@ For easier processing, we want one prediction (or rather prediction error) per r
 
 Performance note: Executing this usually takes <1s (0.3s for 20_000 samples), so executing it many times is generally fine.
 """
+  pred_sym(loc_tb, loc_lr, ax) = Symbol("pred_vertices_$(loc_tb)_$(loc_lr)_$(ax)")
+  manual_sym(loc_tb, loc_lr, ax) = Symbol("manual_$(loc_tb)_$(loc_lr)_$(ax)")
+  auto_sym(loc_tb, loc_lr, ax) = Symbol("gt_vertices_runway_$(loc_tb)_$(loc_lr)_corner_$(ax)")
+  label_sym = (only_manual ? manual_sym : auto_sym)
+	
   vcat([
-  select(df, [Symbol("gt_vertices_runway_$(loc_tb)_$(loc_lr)_corner_$(ax)"),
-            Symbol("pred_vertices_$(loc_tb)_$(loc_lr)_$(ax)")]
+  select(df, [label_sym(loc_tb, loc_lr, ax), pred_sym(loc_tb, loc_lr, ax)]
          => ByRow((val_gt, val_pred)->[val_pred-val_gt, ax, loc_tb, loc_lr])
          => [:pixel_errors, :axis, :loc_near_far, :loc_left_right])
   for loc_tb in ["top", "bottom"],
       loc_lr in ["left", "right"],
-    ax in ["x", "y"]
+      ax in ["x", "y"]
   ]...) |> dropmissing
 end
 
@@ -174,8 +180,8 @@ in_extreme_service_volume(row) =
 begin
 @info "Number of samples for each condition"
 @info filter(row->row.gt_translation_x ∈ (-6000m .. -5500m), df_full) |> nrow
-@info filter(row->abs(row.horizontal_angle) ∈ 1.5°..3°, df_full) |> nrow
-@info filter(row->row.vertical_angle ∈ 1.2°..2.0°, df_full) |> nrow
+@info filter(row->abs(row.horizontal_angle) ∈ 1°..3°, df_full) |> nrow
+@info filter(row->row.vertical_angle ∈ 1.2°..3.0°, df_full) |> nrow
 end
 
 # ╔═╡ d5a9d032-2f0e-4b7e-b1a1-b4a427c3a475
@@ -337,7 +343,7 @@ WGLMakie = "~0.8.11"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.0-beta1"
+julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
 project_hash = "5211283940591c5f342527a49e1bec1bab56fe46"
 
@@ -566,7 +572,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.5+0"
+version = "1.0.5+1"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
@@ -1161,7 +1167,7 @@ version = "0.6.4"
 [[deps.LibCURL_jll]]
 deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
-version = "8.0.1+0"
+version = "8.0.1+1"
 
 [[deps.LibGit2]]
 deps = ["Base64", "NetworkOptions", "Printf", "SHA"]
@@ -1170,7 +1176,7 @@ uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
-version = "1.10.2+0"
+version = "1.11.0+1"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -1317,7 +1323,7 @@ version = "1.1.7"
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
-version = "2.28.2+0"
+version = "2.28.2+1"
 
 [[deps.Measures]]
 git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
@@ -1406,7 +1412,7 @@ version = "1.3.5+1"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.23+0"
+version = "0.3.23+2"
 
 [[deps.OpenEXR]]
 deps = ["Colors", "FileIO", "OpenEXR_jll"]
@@ -1423,7 +1429,7 @@ version = "3.1.4+0"
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
-version = "0.8.1+0"
+version = "0.8.1+2"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
@@ -1463,7 +1469,7 @@ version = "1.6.2"
 [[deps.PCRE2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
-version = "10.42.0+0"
+version = "10.42.0+1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
@@ -1912,7 +1918,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "Pkg", "libblastrampoline_jll"]
 uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
-version = "7.2.0+0"
+version = "7.2.0+1"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -2103,7 +2109,7 @@ version = "1.5.0+0"
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
-version = "1.2.13+0"
+version = "1.2.13+1"
 
 [[deps.isoband_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2126,7 +2132,7 @@ version = "0.15.1+0"
 [[deps.libblastrampoline_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
-version = "5.8.0+0"
+version = "5.8.0+1"
 
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2155,12 +2161,12 @@ version = "1.3.7+1"
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
-version = "1.52.0+0"
+version = "1.52.0+1"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
-version = "17.4.0+0"
+version = "17.4.0+2"
 
 [[deps.x264_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2182,11 +2188,12 @@ version = "3.5.0+0"
 # ╠═6c0bfb80-e907-46c1-90d9-c10b8ac2414b
 # ╟─5e15a03e-3063-406e-ac55-6275a1c8a75a
 # ╟─89123779-3cca-4540-955e-3ab03750a671
-# ╠═2ca9aebe-95f5-49a8-ada2-a6e56712a8ab
+# ╟─c2c14f04-6dd1-45b9-800e-c59bed284248
+# ╟─2ca9aebe-95f5-49a8-ada2-a6e56712a8ab
 # ╠═c3f2d8f8-04fd-4f45-af0d-eaceb849bee5
 # ╠═1cd77f49-5617-408b-a7b1-bc16f502b885
 # ╟─25c74665-4c6d-4872-8e4e-86cdbc76ebf6
-# ╠═204e5e13-c1d1-412f-9cf2-c1037a1e5cf6
+# ╟─204e5e13-c1d1-412f-9cf2-c1037a1e5cf6
 # ╟─169e4d42-fe69-49d3-a2e6-c76d6818bf93
 # ╠═7afdbacc-d3f0-4309-aeca-9d3b355396e1
 # ╟─f804765c-8e8f-4c80-a98f-e15a6af4e370
@@ -2210,7 +2217,7 @@ version = "3.5.0+0"
 # ╠═b64d9e14-af1f-4333-b1fb-8b43e6e7be9b
 # ╠═ff1eea24-d61d-4b6f-a995-4a7a88adfa09
 # ╠═2a336ca5-6661-4b51-ace1-42495c0c3760
-# ╠═ab147ecc-6f34-44e6-8bf3-cd93df088f2b
+# ╟─ab147ecc-6f34-44e6-8bf3-cd93df088f2b
 # ╠═43660451-b5ca-437d-9139-8c6eeb014ce0
 # ╠═273f05fb-6f0f-4dea-921f-00f9b9a576a0
 # ╟─00000000-0000-0000-0000-000000000001

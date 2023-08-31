@@ -3,7 +3,7 @@ using CoordinateTransformations
 import CoordinateTransformations: cameramap
 using Rotations
 using StaticArraysCore
-import StaticArraysCore: StaticVector
+import StaticArraysCore: StaticVector, FieldVector
 using GeometryBasics
 using GeodesyXYZExt
 using Unitful, Unitful.DefaultSymbols
@@ -13,8 +13,8 @@ import LinearAlgebra: UniformScaling
 
 Angle = Union{typeof(1.0°),typeof(1.0rad)}
 Meters = typeof(1.0m)
-@unit px "px" Pixel 0.00345mm false
-Pixels = typeof(1.0px)
+@unit pxl "pxl" Pixel 0.00345mm false
+Pixels = typeof(1.0pxl)
 """
     ProjectionMap{N}
 
@@ -42,7 +42,14 @@ cameramap(::Val{N}, scale::Number) where {N} =
     LinearMap(UniformScaling(scale)) ∘ ProjectionMap{N}()
 
 
-const ImgProj{T} = Point2{T}
+struct ImgProj{T} <: FieldVector{2, T}
+    x
+    y
+end
+# const ImgProj{T} = Point2{T}
+# function (Point2)(p::Point2{T}) where {T}
+#     ImgProj{T}(p)
+# end
 
 "Function to produce a NamedTuple type.
 
@@ -55,15 +62,17 @@ RunwayCorners(::Type{T}) where {T<:Union{XYZ{Meters},ImgProj{Pixels}}} = @NamedT
     far_right::T
 end
 
-function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},XYZ{Meters}})
-    scale = let focal_length = 25mm, pixel_size = 0.00345mm / 1px
+function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},<:XYZ})
+    scale = let focal_length = 25mm, pixel_size = 0.00345mm / 1pxl
         focal_length / pixel_size
     end
     cam_transform = cameramap(Val(1), scale) ∘ inv(cam_pose)
-    proj(p::XYZ{Meters})::ImgProj{Pixels} =
-        (ImgProj{Pixels} ∘ cam_transform ∘ Point3{Meters})(p)
-    proj(rc::RunwayCorners(XYZ{Meters}))::RunwayCorners(ImgProj{Pixels}) =
-        RunwayCorners(ImgProj{Pixels})(proj.(values(rc)))
+    function proj(p::XYZ{T})::ImgProj where T
+        (ImgProj ∘ cam_transform ∘ Point3{T})(p)
+    end
+    function proj(rc::RunwayCorners(XYZ{Meters}))::RunwayCorners(ImgProj{Pixels})
+        RunwayCorners(ImgProj)(proj.(values(rc)))
+    end
     return proj
 end
 
@@ -73,5 +82,5 @@ function __init__()
 end
 
 export ImgProj, RunwayCorners, make_projection_fn
-export Angle, Meters, Pixels, px
+export Angle, Meters, Pixels, pxl
 end # module RunwayLib

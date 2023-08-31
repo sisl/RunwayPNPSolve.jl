@@ -41,20 +41,12 @@ function compute_LLA_rectangle(origin::LLA{<:Real}, rect::@NamedTuple{x::Tuple{T
               maxlat=rect[2].lat, maxlon=rect[2].lon)
 end
 
-function get_unique_runways(runway_identifier; runway_file="./data/2307 A3 Reference Data_v2.xlsx")
-    runways = let
-        df = XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
+get_unique_runways(runway_identifier;
+                   runway_file="./data/2307 A3 Reference Data_v2.xlsx") =
+    let df = XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
         df[df.ICAO .== runway_identifier, :]
     end
-    # Most runways are provided in the two opposite directions.
-    # We only want one direction.
-    runways_unique_direction = let
-        bearings_180 = runways[:, "True Bearing"] .% 180.  # "project" e.g. left-to-right and right-to-left onto the same orientation
-        unique_indices = unique(i->round(bearings_180[i]; digits=0),
-                                eachindex(bearings_180))
-        runways[unique_indices, :]
-    end
-end
+
 angle_to_ENU(θ::Angle) = let
     θ = -θ  # flip orientation
     θ = θ + 90°  # orient from x axis (east)
@@ -69,10 +61,10 @@ function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Ang
 
     front_left  = threshold     + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
     front_right = threshold     + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
-    back_left   = threshold_far + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
-    back_right  = threshold_far + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
+    # back_left   = threshold_far + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
+    # back_right  = threshold_far + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
 
-    return ENU{typeof(1.0m)}[front_left, front_right, back_left, back_right]
+    return ENU{typeof(1.0m)}[front_left, front_right]  #, back_left, back_right]
 end
 
 function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
@@ -101,7 +93,7 @@ function compute_thresholds_and_corners_in_ENU(
 
     corners::Vector{ENU{Meters}} = vcat([
         let
-            construct_runway_corners(thres, width, bearing)
+            construct_runway_corners(thres, width, bearing; length=3000m)
         end
         for (thres, width, bearing) in zip(thresholds,
                                         runways_df[:, "RWY Width (m)"]m,

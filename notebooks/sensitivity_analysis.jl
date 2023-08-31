@@ -10,6 +10,11 @@ begin
 	import Unitful.DefaultSymbols: m, mm
 	using ForwardDiff, Roots
 	using Makie, WGLMakie
+
+	using LinearAlgebra: normalize!, norm
+	using Roots, ForwardDiff
+
+	using PlutoUI
 end
 
 # ╔═╡ 2a604aa9-078b-4e54-be72-51281f420d66
@@ -32,6 +37,9 @@ We start by investigating three approaches:
 3. Estimating the angle between the sidelines.
 """
 
+# ╔═╡ 8eb74ec2-b08e-47dd-8571-df5797565416
+LocalResource("/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/overview.png", :width=>300.)
+
 # ╔═╡ b347d4e3-eeae-4bcb-a009-303a363d4768
 md"""
 ### The setup
@@ -49,7 +57,7 @@ Notice that the elevation is derived from the minimum vertical angle of $1.2\deg
 p⃗ = (; x=6000.0m, y=0.0m, z=126.0m)
 
 # ╔═╡ 5ec54380-4f1b-499d-8170-8bfe3f6d302c
-H = p⃗.z; X = p⃗.x; md"For notational convenience, let's also define these variables."
+Z = H = p⃗.z; X = p⃗.x; Y = p⃗.y; md"For notational convenience, let's also define these variables."
 
 # ╔═╡ 55d9582c-9b27-475a-832e-f6d04de4deba
 md"""
@@ -61,7 +69,7 @@ Note however that for these calculations, we set the origin into the airplane, w
 """
 
 # ╔═╡ 69f55b95-c27d-48ae-8968-20c7a13a8d32
-Δx, Δy = 3500.0m, 61.0m
+Δx, Δy = 3000.0m, 61.0m
 
 # ╔═╡ 4e3e3e63-424c-4738-a47a-da6a679a0aeb
 md"""
@@ -90,7 +98,7 @@ $$z\prime_2 / f = H / (x + \Delta x)$$
 where z' is pointing downwards from the center in pixel space.
 This let's us relate $\Delta x$ to $\Delta z\prime$ by writing
 
-$$\Delta y\prime = y\prime_2 - y\prime_1 = f H (1 / x - 1 / (x + \Delta x))$$
+$$\Delta z\prime = z\prime_2 - z\prime_1 = f H (1 / x - 1 / (x + \Delta x))$$
 
 where $H$ denotes the height (i.e. `p.z`).
 
@@ -108,19 +116,22 @@ Notice how the second equation does not depend on $x$ directly (!); however, as 
 
 """
 
+# ╔═╡ 578645a8-5742-4647-8118-2e72e1f744d4
+LocalResource("/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/side-view.png", :width=>600.)
+
 # ╔═╡ 0d880813-bc71-4f0d-8987-93790f33903b
-x(Δz′) = sqrt((Δx/2)^2 + f*H*Δx/Δz′) - Δx/2
+x_length(Δx′) = sqrt((Δx/2)^2 + f*H*Δx/Δx′) - Δx/2
 
 # ╔═╡ 558f9ef8-1d5c-42d3-879e-1c41ca695464
-dx_dΔz′(Δz′) = -1/2 * (f*H*Δx / Δz′^2) / sqrt((Δx/2)^2 + f*H*Δx/Δz′)
+dx_length_dΔx′(Δx′) = -1/2 * (f*H*Δx / Δx′^2) / sqrt((Δx/2)^2 + f*H*Δx/Δx′)
 
 # ╔═╡ d52cc7c0-fecf-400f-9a5f-27510b84115b
 md"Let's compute Δz′ and check whether we successfully recover x!"
 
 # ╔═╡ 17cabca5-0b8f-4720-95a3-e7f612330012
-let Δz′ = f*H*(1/X - 1/(X+Δx))
-	@info x(Δz′)
-	@assert x(Δz′) ≈ X
+let Δx′ = f*H*(1/X - 1/(X+Δx))
+	@info x_length(Δx′)
+	@assert x_length(Δx′) ≈ X
 end
 
 # ╔═╡ 19f6ce83-0afa-46d3-8873-6f06bd18c799
@@ -130,18 +141,18 @@ md"Indeed we do!."
 md"Let's also check the derivative equation against a finite difference method."
 
 # ╔═╡ 0286d6a0-837c-43ca-8782-52dcb325d2d4
-let Δz′ = f*H*(1/X - 1/(X+Δx)),
+let Δx′ = f*H*(1/X - 1/(X+Δx)),
 	ϵ = sqrt(eps())
-    @info dx_dΔz′(Δz′) |> upreferred
-	@info (x(Δz′ + ϵ*1m) - x(Δz′ - ϵ*1m)) / (2*ϵ*1m) |> upreferred
-	@assert dx_dΔz′(Δz′) ≈ (x(Δz′ + ϵ*1m) - x(Δz′ - ϵ*1m)) / (2*ϵ*1m)
+    @info dx_length_dΔx′(Δx′) |> upreferred
+	@info (x_length(Δx′ + ϵ*1m) - x_length(Δx′ - ϵ*1m)) / (2*ϵ*1m) |> upreferred
+	@assert dx_length_dΔx′(Δx′) ≈ (x_length(Δx′ + ϵ*1m) - x_length(Δx′ - ϵ*1m)) / (2*ϵ*1m)
 end
 
 # ╔═╡ 02feed16-83d9-43a1-8686-9aa5b3df3b70
 md"Also looks good!"
 
 # ╔═╡ 8036f7fd-6a8b-4d94-aa33-aafac0fbb45e
-md"#### Approach 1: the result"
+md"##### Approach 1: the result"
 
 # ╔═╡ d07c02c7-dd4a-4b33-a0a1-8318b538c511
 md"""
@@ -149,34 +160,314 @@ Now let's check how much one pixel error would chance our distance estimate.
 """
 
 # ╔═╡ 01defef3-e58e-4ab1-a5d7-fa35eae4c5e7
-let Δz′ = f*H*(1/X - 1/(X+Δx))
-	@info dx_dΔz′(Δz′)*pxl_size |> upreferred
+let Δx′ = f*H*(1/X - 1/(X+Δx))
+	@info dx_length_dΔx′(Δx′)*pxl_size |> upreferred
 end
+
+# ╔═╡ 71b65ba5-61c2-44d0-bfd5-2498b56142ab
+md"""#### Approach 1.5: Only front corner estimation
+
+In this case, the equation simply collapses to
+
+$$x(z\prime) = \frac{fH}{z\prime}$$
+
+and
+
+$$\frac{\partial x}{\partial z\prime} = -\frac{fH}{z\prime^2}.$$
+"""
+
+# ╔═╡ e27430ad-866d-4219-b8c2-9b26ba6ebff5
+x_near(z′) = f*H/z′
+
+# ╔═╡ 1f4243c5-024f-4eb7-a752-46d7ed7e0be1
+dx_near_dz′(z′) = -f*H/(z′^2)
+
+# ╔═╡ 6373b4f7-ac81-43bc-834b-ad0e91864cc5
+let z′ = f*H*(1/X)
+	@info x_near(z′)
+	@assert x_near(z′) ≈ X
+end
+
+# ╔═╡ 68375f5b-be45-4a07-bbf6-f725637426b7
+let z′ = f*H*1/X,
+	ϵ = sqrt(eps())
+    @info dx_near_dz′(z′) |> upreferred
+	@info (x_near(z′ + ϵ*1m) - x_near(z′ - ϵ*1m)) / (2*ϵ*1m) |> upreferred
+	@assert dx_near_dz′(z′) ≈ (x_near(z′ + ϵ*1m) - x_near(z′ - ϵ*1m)) / (2*ϵ*1m)
+end
+
+# ╔═╡ 77728d46-2163-41bb-a260-3c88ca43e632
+md"#### Approach 1.5: The result."
+
+# ╔═╡ 090602e0-4dd1-4151-8f6a-6dbcc8fc58a1
+let z′ = f*H*(1/X)
+	@info dx_near_dz′(z′)*pxl_size |> upreferred
+end
+
+# ╔═╡ 1160f576-ea96-461c-8a7a-2f3f0f33c318
+md"""
+### Approach 2: Runway width estimation
+For the runway width we can do something similar as for approach one, although some equations change slightly.
+
+Notice that we can compute $\Delta y\prime$ as
+
+$$\frac{\Delta y\prime}{\sqrt{f^2 + H\prime^2}} = \frac{\Delta y}{\sqrt{X^2 + H^2}}$$
+
+where $H\prime$ is the little height offset in the image space, with $\frac{H\prime}{f} = \frac{H}{X}$.
+Due to the dependence of $H\prime$ on $X$, this certainly has the potential to get nasty when solving for $X$.
+However, when you do the math and try to solve for $x$, actually the $\sqrt{\cdot}$ terms resolve themselves (thank god), and we're simply left with
+
+$$x(\Delta y\prime) = f \frac{\Delta y}{\Delta y\prime}$$
+
+and
+
+$$\frac{\partial x}{\partial \Delta y\prime} = -f \frac{\Delta y}{\left(\Delta y\prime\right)^2}.$$
+"""
+
+# ╔═╡ 8d70252d-037f-4e31-b2c6-12b8b857e2ae
+x_width(Δy′) = f * Δy/Δy′
+
+# ╔═╡ 3ff1053b-dbd4-4fd8-82b8-5e59915d3878
+dx_dΔy′(Δy′) = -f * Δy/(Δy′^2)
+
+# ╔═╡ 28518bb2-9016-494a-8535-0528ebb22306
+md"Let's compute Δz′ and check whether we successfully recover x!"
+
+# ╔═╡ aef2c250-c9a8-49b2-beea-866e0c787d6c
+let H′ = f*H/X,	Δy′ = Δy / √(X^2 + H^2) * √(f^2 + H′^2)
+	@info x_width(Δy′)
+	@assert x_width(Δy′) ≈ X
+end
+
+# ╔═╡ 28e9cbd0-bdae-4df3-a8bb-e45d4c98423d
+md"Indeed we do!."
+
+# ╔═╡ 4b338224-0ba8-441f-b361-37fcffabd07d
+md"Let's also check the derivative equation against a finite difference method."
+
+# ╔═╡ 2054da46-6571-4c42-9fd0-30dd6b211ad8
+let H′ = f*H/X,	Δy′ = Δy / √(X^2 + H^2) * √(f^2 + H′^2),
+	ϵ = sqrt(eps())
+
+    lhs = dx_dΔy′(Δy′); @info lhs |> upreferred
+	rhs = (x_width(Δy′ + ϵ*1m) - x_width(Δy′ - ϵ*1m)) / (2*ϵ*1m);@info rhs|>upreferred
+	@assert lhs ≈ rhs
+end
+
+# ╔═╡ 5cd267ca-d6f5-4d05-aea0-24e96211051a
+md"Also looks good!"
+
+# ╔═╡ 22190240-4828-4843-a57d-6e9c40187300
+md"##### Approach 2: the result"
+
+# ╔═╡ 55e478bc-991d-4c5b-96e1-07b8baf078a5
+md"""
+Now let's check how much one pixel error would chance our distance estimate.
+"""
+
+# ╔═╡ 523bdea6-65ef-43fc-aa09-bc22c1c420e1
+let H′ = f*H/X,	Δy′ = Δy / √(X^2 + H^2) * √(f^2 + H′^2)
+	@info dx_dΔy′(Δy′)*pxl_size |> upreferred
+end
+
+# ╔═╡ df6fa488-1055-440e-8bb7-e4e5479f7b51
+md"""
+### Approach 3: Angle estimation
+Finally, we try to estimate the angle between the two sidelines, and recall that we know the width of the runway.
+Notice that this feature is not in the "image space" directly, but rather a "derived" property.
+
+Let's call the angle between the sidelines $\beta$. We can reuse our computations from earlier to compute $\Delta y\prime_1$ (near), $\Delta y\prime_2$ (far) and $\Delta x$.
+Then, we compute the relation between distance and angle as
+
+$$\frac{\Delta y}{2H}\cdot\frac{\left[ \frac{\sqrt{1+\left(\frac{H}{x}\right)^2}}{\sqrt{x^2+H^2}} - \frac{\sqrt{1+\left(\frac{H}{x+\Delta x}\right)^2}}{\sqrt{(x+\Delta x)^2 + H^2}}\right ]}{\left( \frac{1}{x} - \frac{1}{x + \Delta x}\right )} - \tan{\left(\frac{\beta}{2}\right)}=0.$$
+"""
+
+
+# ╔═╡ 4b9d72b3-f794-4b3c-9fdc-6575ac360d30
+F(β, x) = Δy/(2*H)*(√(1+(H/x)^2)/√(x^2+H^2) - √(1+(H/(x+Δx))^2)/√((x+Δx)^2 + H^2))/(1/x - 1/(x + Δx) ) - tan(β/2)
+
+# ╔═╡ 1d5a8d4c-59bf-439a-b5a5-b601e2dae12d
+F′(β, x) = Δy/(2*H)*(√(1+(H/x)^2)/√(x^2+H^2) - √(1+(H/(x+Δx))^2)/√((x+Δx)^2 + H^2))/(1/x - 1/(x + Δx) )
+
+# ╔═╡ 201ffa76-905a-4046-a25c-9f34fad27b70
+md"""
+Let's first try to gain some intuition.
+Compared to before, we have replaced equations where the measurement quantity $\Delta y$ is related to the distance $x$ by roughly $\Delta y \sim \frac{1}{x}$ with something where the measurement quantity is related as
+
+$$\beta \sim \arctan\frac{\frac{1}{x} + C_1}{\frac{1}{x}+C_2}.$$
+"""
+
+
+# ╔═╡ f0b4d833-0085-4071-afac-3481d861b131
+md"""
+Computing the derivative of the first equation by hand would require first solving for $x$, which is hard or impossible here. However, we can employ the [Implicit Function Theorem](https://en.wikipedia.org/wiki/Implicit_function_theorem) to compute the derivative at a given point.
+
+Call the above function $F(\beta, x(\beta))$ and assume we have a solution $(\beta, x(\beta))$ with $F(\beta, x(\beta))=0$.
+Then the theorem tells us that we can compute the gradient as
+
+$$\frac{\partial x}{\partial \beta} = - [\partial F / \partial x]^{-1} [\partial F / \partial \beta].$$
+
+We will proceed as follows:
+1. We will find the angle $\beta$ for our setup by manually projected each corner point and computing the angle. We will check if the equation resolves this way.
+
+2. We will emply a root finding algorithm so solve $F(\beta, x(\beta))$ given a value for $\beta$.
+
+3. We will employ automatic differentiation to compute the values for the above equation for $\partial x / \partial \beta$.
+
+4. We will double check this gradient against a finite difference approximation.
+"""
+
+# ╔═╡ fdf048ea-8a12-4faf-9cab-9b86e5b12671
+md"#### Step 1"
+
+# ╔═╡ 86d25030-8c11-4986-9b1e-41ede60e9417
+# gives [x′, y′]
+project(p::Point3) = [p[3], p[2]] / p[1] * f# / pxl_size)
+
+# ╔═╡ acc34361-9524-4282-ad01-7f804cdfc6f8
+pts = (
+	near_left  = Point3(   X,  Δy/2, -H),
+	far_left   = Point3(X+Δx,  Δy/2, -H),
+	near_right = Point3(   X, -Δy/2, -H),
+	far_right  = Point3(X+Δx, -Δy/2, -H)
+)
+
+# ╔═╡ 5bb57399-f23e-451c-b911-16231ecf47ad
+ppts = map(project, pts)  # read 'ppts' as 'projected points'
+
+# ╔═╡ 127e1440-aa75-42c5-ad65-174ce1ba8b1f
+β = let
+	v1 = ppts[:near_left] - ppts[:far_left]#; normalize!(v1)
+	v2 = ppts[:near_right] - ppts[:far_right]#; normalize!(v2)
+	β = acos(v1'*v2 / (norm(v1) * norm(v2)))
+end
+
+# ╔═╡ 0d0435b2-6be1-4603-82c8-5649fa36887c
+rad2deg(β)
+
+# ╔═╡ 9ca975d7-f02c-4faa-b62f-0796704233a3
+F(β, X)
+
+# ╔═╡ 64e98c78-3958-4cf6-a286-b5a3b26aeb67
+F′(β, 10000m)
+
+# ╔═╡ 7e7fead1-9a85-490a-8e00-d41a55c4486b
+md"### Approach 4: Angle estimation for y"
+
+# ╔═╡ 5a34dfa5-54b6-4efd-8457-043bef69e949
+mul_one_pxl_of_error(val) = val*pxl_size |> upreferred
+
+# ╔═╡ 6b709d3d-f58f-4d5f-8833-17c7515da744
+dz_dx′ = (;
+  near = X/f,
+  far = (X+Δx)/f,
+)
+
+# ╔═╡ 4d8bd412-fd3d-4ea4-b87d-5c88c1abd5ea
+map(mul_one_pxl_of_error, dz_dx′)
+
+# ╔═╡ d20e1ba3-c100-457f-8294-34ea54f10b20
+map(mul_one_pxl_of_error, dz_dx′).near / tan(deg2rad(1.2))
+
+# ╔═╡ fbb945ab-32ec-43b7-9242-738798ed7195
+dz_dy′ = (;
+  near = -((ppts.near_left[1]^2 + f^2) * (pts.near_left[2]^2 / ppts.near_left[2]^3)) / √((ppts.near_left[1]^2 + f^2) * (pts.near_left[2] / ppts.near_left[2])^2 - X^2),
+  far = -((ppts.far_left[1]^2 + f^2) * (pts.far_left[2]^2 / ppts.far_left[2]^3)) / √((ppts.far_left[1]^2 + f^2) * (pts.far_left[2] / ppts.far_left[2])^2 - X^2)
+)
+
+# ╔═╡ 6255272b-e159-40f0-b16e-24780592032c
+map(mul_one_pxl_of_error, dz_dy′)
+
+# ╔═╡ 0a6d61dd-2763-474d-baa0-749cf50ace0d
+dy_dy′ = (;
+  near = √(X^2 - H^2) / √(ppts.near_left[1]^2 + f^2) |> upreferred,
+  far  = √((X+Δx)^2 - H^2) / √(ppts.far_left[1]^2 + f^2) |> upreferred
+)
+
+# ╔═╡ 419b1153-61c1-4465-ab34-00bda59a4853
+map(mul_one_pxl_of_error, dy_dy′)
+
+# ╔═╡ 66e38ecb-d4d8-440c-8267-ecfc20765e82
+dx_dx′ = (;
+  near = -f*H/(ppts.near_left[1])^2 |> upreferred,
+  far  = -f*H/(ppts.far_left[1])^2 |> upreferred
+)
+
+# ╔═╡ 1e846ea5-f2b6-4a7e-80d3-2a6c6258603a
+map(mul_one_pxl_of_error, dx_dx′)
+
+# ╔═╡ 01fede42-efe7-4833-aeb6-c4d2fd11ef1c
+inv(dx_dx′.near)^2 / sum(inv∘abs2, dx_dx′)
+
+# ╔═╡ a5fbd5cb-e12b-46f2-adad-6af8456ebbe7
+inv(dx_dx′.near)^2
+
+# ╔═╡ e9277f3e-2bc6-461a-94bc-48d3c5855556
+dx_dy′ = (;
+  near = -((ppts.near_left[1]^2 + f^2) * (pts.near_left[2]^2 / ppts.near_left[2]^3)) / √((ppts.near_left[1]^2 + f^2) * (pts.near_left[2] / ppts.near_left[2])^2 - Z^2),
+  far = -((ppts.far_left[1]^2 + f^2) * (pts.far_left[2]^2 / ppts.far_left[2]^3)) / √((ppts.far_left[1]^2 + f^2) * (pts.far_left[2] / ppts.far_left[2])^2 - Z^2)
+)
+
+# ╔═╡ 05545cf3-db6e-4903-8d62-72b8d109ad19
+map(mul_one_pxl_of_error, dx_dy′)
+
+# ╔═╡ 446b2639-f2d7-4d90-b86f-ab7d81d8fdb7
+md"##### Couple of checks"
+
+# ╔═╡ 94c13430-2194-433c-85c9-3005b8237f67
+begin # X/Z = f / x′
+  X/(-Z) - f/ppts.near_left[1]
+end
+
+# ╔═╡ 58bb08ee-e30e-4a6e-8ef5-d0724112acd9
+# checking the inverse function theorem
+(inv(-f*Z / ppts.near_left[1]^2), -f*Z/X^2) .|> upreferred
+
+# ╔═╡ c26d44d1-ac3b-47b6-9a35-6d07a2f99462
+(inv(-f*Z / ppts.far_left[1]^2), -f*Z/(X+Δx)^2) .|> upreferred
+
+# ╔═╡ c5fd63fa-bdd7-45bc-8bb4-66c51d9b44c4
+map(upreferred∘inv, dx_dx′)
+
+# ╔═╡ bf3a1dc5-0a49-4afb-bdb6-feaf00336d00
+map(upreferred∘inv, dx_dy′)
+
+# ╔═╡ 7310adbe-6917-429e-a330-39d100edc946
+map(upreferred∘inv, dy_dy′)
+
+# ╔═╡ f74d165b-ebfc-4075-b72d-75025c1227f7
+map(upreferred∘inv, dz_dx′)
+
+# ╔═╡ be81c17f-8321-42fe-ba10-8c6ff5fbc983
+map(upreferred∘inv, dz_dy′)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
-ForwardDiff = "~0.10.35"
-Makie = "~0.19.7"
-Roots = "~2.0.17"
-Unitful = "~1.16.1"
-WGLMakie = "~0.8.11"
+ForwardDiff = "~0.10.36"
+Makie = "~0.19.8"
+PlutoUI = "~0.7.52"
+Roots = "~2.0.19"
+Unitful = "~1.16.3"
+WGLMakie = "~0.8.12"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.0-beta1"
+julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "04ece6399011e6dadaf6bafb7de4782706067f38"
+project_hash = "8dcc99a1d1d21f93b095c7fb79c7c6d181283f0d"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -193,6 +484,12 @@ weakdeps = ["ChainRulesCore", "Test"]
 git-tree-sha1 = "f35684b7349da49fcc8a9e520e30e45dbb077166"
 uuid = "398f06c4-4d28-53ec-89ca-5b2656b7603d"
 version = "0.2.1"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "91bd53c39b9cbfb5ef4b015e8b582d344532bd0a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.2.0"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "faa260e4cb5aba097a73fab382dd4b5819d8ec8c"
@@ -245,10 +542,10 @@ version = "7.4.11"
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
 [[deps.Automa]]
-deps = ["ScanByte", "TranscodingStreams"]
-git-tree-sha1 = "48e54446df62fdf9ef76959c32dc33f3cff659ee"
+deps = ["TranscodingStreams"]
+git-tree-sha1 = "ef9997b3d5547c48b41c7bd8899e812a917b409d"
 uuid = "67c07d97-cdcb-5c2c-af73-a7f9c32a568b"
-version = "0.8.3"
+version = "0.8.4"
 
 [[deps.AxisAlgorithms]]
 deps = ["LinearAlgebra", "Random", "SparseArrays", "WoodburyMatrices"]
@@ -328,9 +625,9 @@ version = "0.4.0"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "dd3000d954d483c1aad05fe1eb9e6a715c97013e"
+git-tree-sha1 = "d9a8f86737b665e15a9641ecbac64deef9ce6724"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.22.0"
+version = "3.23.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
@@ -379,7 +676,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.5+0"
+version = "1.0.5+1"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
@@ -457,9 +754,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[deps.Distributions]]
 deps = ["FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns", "Test"]
-git-tree-sha1 = "27a18994a5991b1d2e2af7833c4f8ecf9af6b9ea"
+git-tree-sha1 = "938fe2981db009f531b6332e31c58e9584a2f9bd"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.99"
+version = "0.25.100"
 
     [deps.Distributions.extensions]
     DistributionsChainRulesCoreExt = "ChainRulesCore"
@@ -533,9 +830,9 @@ version = "0.4.1"
 
 [[deps.FFMPEG_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers", "LAME_jll", "Libdl", "Ogg_jll", "OpenSSL_jll", "Opus_jll", "PCRE2_jll", "Zlib_jll", "libaom_jll", "libass_jll", "libfdk_aac_jll", "libvorbis_jll", "x264_jll", "x265_jll"]
-git-tree-sha1 = "b8660105ccaff705c70894c5f1e24f5c18974220"
+git-tree-sha1 = "466d45dc38e15794ec7d5d63ec03d776a9aff36e"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
-version = "4.4.4+0"
+version = "4.4.4+1"
 
 [[deps.FFTW]]
 deps = ["AbstractFFTs", "FFTW_jll", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
@@ -566,9 +863,9 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays", "Statistics"]
-git-tree-sha1 = "f372472e8672b1d993e93dada09e23139b509f9e"
+git-tree-sha1 = "048dd3d82558759476cff9cff999219216932a08"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "1.5.0"
+version = "1.6.0"
 
 [[deps.FiniteDiff]]
 deps = ["ArrayInterface", "LinearAlgebra", "Requires", "Setfield", "SparseArrays"]
@@ -606,9 +903,9 @@ version = "0.4.2"
 
 [[deps.ForwardDiff]]
 deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
-git-tree-sha1 = "00e252f4d706b3d55a8863432e742bf5717b498d"
+git-tree-sha1 = "cf0fe81336da9fb90944683b8c41984b08793dad"
 uuid = "f6369f11-7733-5829-9624-2563aa707210"
-version = "0.10.35"
+version = "0.10.36"
 weakdeps = ["StaticArrays"]
 
     [deps.ForwardDiff.extensions]
@@ -686,9 +983,9 @@ version = "1.3.14+0"
 
 [[deps.GridLayoutBase]]
 deps = ["GeometryBasics", "InteractiveUtils", "Observables"]
-git-tree-sha1 = "678d136003ed5bceaab05cf64519e3f956ffa4ba"
+git-tree-sha1 = "f57a64794b336d4990d90f80b147474b869b1bc4"
 uuid = "3955a311-db13-416c-9275-1d80ed98e5e9"
-version = "0.9.1"
+version = "0.9.2"
 
 [[deps.Grisu]]
 git-tree-sha1 = "53bb909d1151e57e2484c3d1b53e19552b887fb2"
@@ -718,6 +1015,18 @@ deps = ["Test"]
 git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
 version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "c47c5fa4c5308f27ccaac35504858d8914e102f9"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.4"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "d75853a0bdbfb1ac815478bacd89cd27b550ace6"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.3"
 
 [[deps.ImageAxes]]
 deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
@@ -772,9 +1081,9 @@ version = "0.1.2"
 
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "0cb9352ef2e01574eeebdb102948a58740dcaf83"
+git-tree-sha1 = "ad37c091f7d7daf900963171600d7c1c5c3ede32"
 uuid = "1d5cc7b8-4909-519e-a0f8-d0f5ad9712d0"
-version = "2023.1.0+0"
+version = "2023.2.0+0"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -824,10 +1133,10 @@ uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
 [[deps.JLLWrappers]]
-deps = ["Preferences"]
-git-tree-sha1 = "abc9885a7ca2052a736a600f7fa66209f96506e1"
+deps = ["Artifacts", "Preferences"]
+git-tree-sha1 = "7e5d6779a1e09a36db2a7b6cff50942a0a7d0fca"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
-version = "1.4.1"
+version = "1.5.0"
 
 [[deps.JSON]]
 deps = ["Dates", "Mmap", "Parsers", "Unicode"]
@@ -837,9 +1146,9 @@ version = "0.21.4"
 
 [[deps.JSServe]]
 deps = ["Base64", "CodecZlib", "Colors", "Dates", "Deno_jll", "HTTP", "Hyperscript", "LinearAlgebra", "Markdown", "MsgPack", "Observables", "RelocatableFolders", "SHA", "Sockets", "Tables", "Test", "ThreadPools", "URIs", "UUIDs", "WidgetsBase"]
-git-tree-sha1 = "399dadbc635e14d9c7aae9f8949f37090c16bb5a"
+git-tree-sha1 = "38be9964165e8693b63f2d5ba2b6154dfd69c3b1"
 uuid = "824d6782-a2ef-11e9-3a09-e5662e0c26f9"
-version = "2.2.8"
+version = "2.2.10"
 
 [[deps.JpegTurbo]]
 deps = ["CEnum", "FileIO", "ImageCore", "JpegTurbo_jll", "TOML"]
@@ -899,7 +1208,7 @@ version = "0.6.4"
 [[deps.LibCURL_jll]]
 deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
-version = "8.0.1+0"
+version = "8.0.1+1"
 
 [[deps.LibGit2]]
 deps = ["Base64", "NetworkOptions", "Printf", "SHA"]
@@ -908,7 +1217,7 @@ uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
-version = "1.10.2+0"
+version = "1.11.0+1"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -973,9 +1282,9 @@ version = "0.1.12"
 
 [[deps.LogExpFunctions]]
 deps = ["DocStringExtensions", "IrrationalConstants", "LinearAlgebra"]
-git-tree-sha1 = "c3ce8e7420b3a6e071e0fe4745f5d4300e37b13f"
+git-tree-sha1 = "7d6dd4e9212aebaeed356de34ccf262a3cd415aa"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
-version = "0.3.24"
+version = "0.3.26"
 
     [deps.LogExpFunctions.extensions]
     LogExpFunctionsChainRulesCoreExt = "ChainRulesCore"
@@ -992,33 +1301,38 @@ uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
 [[deps.LoggingExtras]]
 deps = ["Dates", "Logging"]
-git-tree-sha1 = "cedb76b37bc5a6c702ade66be44f831fa23c681e"
+git-tree-sha1 = "a03c77519ab45eb9a34d3cfe2ca223d79c064323"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
-version = "1.0.0"
+version = "1.0.1"
+
+[[deps.MIMEs]]
+git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "0.1.4"
 
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "Pkg"]
-git-tree-sha1 = "154d7aaa82d24db6d8f7e4ffcfe596f40bff214b"
+git-tree-sha1 = "eb006abbd7041c28e0d16260e50a24f8f9104913"
 uuid = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
-version = "2023.1.0+0"
+version = "2023.2.0+0"
 
 [[deps.MacroTools]]
 deps = ["Markdown", "Random"]
-git-tree-sha1 = "42324d08725e200c23d4dfb549e0d5d89dede2d2"
+git-tree-sha1 = "9ee1618cbf5240e6d4e0371d6f24065083f60c48"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-version = "0.5.10"
+version = "0.5.11"
 
 [[deps.Makie]]
 deps = ["Animations", "Base64", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG", "FileIO", "FixedPointNumbers", "Formatting", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageIO", "InteractiveUtils", "IntervalSets", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "Match", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Setfield", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "StableHashTraits", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun"]
-git-tree-sha1 = "729640354756782c89adba8857085a69e19be7ab"
+git-tree-sha1 = "e81675589ba7199a82443e87fc52e17eeceac2e8"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.19.7"
+version = "0.19.8"
 
 [[deps.MakieCore]]
 deps = ["Observables"]
-git-tree-sha1 = "87a85ff81583bd392642869557cb633532989517"
+git-tree-sha1 = "f56b09c8b964919373d61750c6d8d4d2c602a2be"
 uuid = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
-version = "0.6.4"
+version = "0.6.5"
 
 [[deps.MappedArrays]]
 git-tree-sha1 = "2dab0221fe2b0f2cb6754eaa743cc266339f527e"
@@ -1049,7 +1363,7 @@ version = "1.1.7"
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
-version = "2.28.2+0"
+version = "2.28.2+1"
 
 [[deps.Missings]]
 deps = ["DataAPI"]
@@ -1128,7 +1442,7 @@ version = "1.3.5+1"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.23+0"
+version = "0.3.23+2"
 
 [[deps.OpenEXR]]
 deps = ["Colors", "FileIO", "OpenEXR_jll"]
@@ -1145,7 +1459,7 @@ version = "3.1.4+0"
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
-version = "0.8.1+0"
+version = "0.8.1+2"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
@@ -1167,9 +1481,9 @@ version = "0.5.5+0"
 
 [[deps.Optim]]
 deps = ["Compat", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
-git-tree-sha1 = "e3a6546c1577bfd701771b477b794a52949e7594"
+git-tree-sha1 = "963b004d15216f8129f6c0f7d187efa136570be0"
 uuid = "429524aa-4258-5aef-a3af-852621145aeb"
-version = "1.7.6"
+version = "1.7.7"
 
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1185,7 +1499,7 @@ version = "1.6.2"
 [[deps.PCRE2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
-version = "10.42.0+0"
+version = "10.42.0+1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
@@ -1195,9 +1509,9 @@ version = "0.11.17"
 
 [[deps.PNGFiles]]
 deps = ["Base64", "CEnum", "ImageCore", "IndirectArrays", "OffsetArrays", "libpng_jll"]
-git-tree-sha1 = "f809158b27eba0c18c269cf2a2be6ed751d3e81d"
+git-tree-sha1 = "9b02b27ac477cad98114584ff964e3052f656a0f"
 uuid = "f57f5aa1-a3ce-4bc8-8ab9-96f992907883"
-version = "0.3.17"
+version = "0.4.0"
 
 [[deps.Packing]]
 deps = ["GeometryBasics"]
@@ -1252,16 +1566,22 @@ git-tree-sha1 = "f92e1315dadf8c46561fb9396e525f7200cdc227"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.3.5"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "e47cd150dbe0443c3a3651bc5b9cbd5576ab75b7"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.52"
+
 [[deps.PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
 uuid = "647866c9-e3ac-4575-94e7-e3d426903924"
 version = "0.1.2"
 
 [[deps.Polynomials]]
-deps = ["LinearAlgebra", "RecipesBase"]
-git-tree-sha1 = "3aa2bb4982e575acd7583f01531f241af077b163"
+deps = ["LinearAlgebra", "RecipesBase", "Setfield"]
+git-tree-sha1 = "6ded5b759921314670b726dc6ce479675046bc04"
 uuid = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
-version = "3.2.13"
+version = "4.0.1"
 
     [deps.Polynomials.extensions]
     PolynomialsChainRulesCoreExt = "ChainRulesCore"
@@ -1281,9 +1601,9 @@ version = "0.2.4"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
-git-tree-sha1 = "9673d39decc5feece56ef3940e5dafba15ba0f81"
+git-tree-sha1 = "03b4c25b43cb84cee5c90aa9b5ea0a78fd848d2f"
 uuid = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
-version = "1.1.2"
+version = "1.2.0"
 
 [[deps.Preferences]]
 deps = ["TOML"]
@@ -1385,9 +1705,9 @@ version = "0.4.0+0"
 
 [[deps.Roots]]
 deps = ["ChainRulesCore", "CommonSolve", "Printf", "Setfield"]
-git-tree-sha1 = "de432823e8aab4dd1a985be4be768f95acf152d4"
+git-tree-sha1 = "ff42754a57bb0d6dcfe302fd0d4272853190421f"
 uuid = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
-version = "2.0.17"
+version = "2.0.19"
 
     [deps.Roots.extensions]
     RootsForwardDiffExt = "ForwardDiff"
@@ -1407,18 +1727,6 @@ version = "0.2.1"
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
-
-[[deps.SIMD]]
-deps = ["PrecompileTools"]
-git-tree-sha1 = "0e270732477b9e551d884e6b07e23bb2ec947790"
-uuid = "fdea26ae-647d-5447-a871-4b548cad5224"
-version = "3.4.5"
-
-[[deps.ScanByte]]
-deps = ["Libdl", "SIMD"]
-git-tree-sha1 = "d49e35f413186528f1d7cc675e67d0ed16fd7800"
-uuid = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
-version = "0.4.0"
 
 [[deps.Scratch]]
 deps = ["Dates"]
@@ -1481,9 +1789,9 @@ version = "0.3.0"
 
 [[deps.SimplePolynomials]]
 deps = ["Mods", "Multisets", "Polynomials", "Primes"]
-git-tree-sha1 = "ac7b9bd0d2d2ee86e9c7016fb76ff7c1037838e9"
+git-tree-sha1 = "d537c31cf9995236166e3e9afc424a5a1c59ff9d"
 uuid = "cc47b68c-3164-5771-a705-2bc0097375a0"
-version = "0.2.12"
+version = "0.2.14"
 
 [[deps.SimpleRandom]]
 deps = ["Distributions", "LinearAlgebra", "Random"]
@@ -1519,9 +1827,9 @@ version = "1.10.0"
 
 [[deps.SpecialFunctions]]
 deps = ["IrrationalConstants", "LogExpFunctions", "OpenLibm_jll", "OpenSpecFun_jll"]
-git-tree-sha1 = "7beb031cf8145577fbccacd94b8a8f4ce78428d3"
+git-tree-sha1 = "e2cfc4012a19088254b3950b85c3c1d8882d864d"
 uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
-version = "2.3.0"
+version = "2.3.1"
 weakdeps = ["ChainRulesCore"]
 
     [deps.SpecialFunctions.extensions]
@@ -1598,7 +1906,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "Pkg", "libblastrampoline_jll"]
 uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
-version = "7.2.0+0"
+version = "7.2.0+1"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -1650,6 +1958,11 @@ git-tree-sha1 = "9a6ae7ed916312b41236fcef7e0af564ef934769"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.9.13"
 
+[[deps.Tricks]]
+git-tree-sha1 = "aadb748be58b492045b4f56166b5188aa63ce549"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.7"
+
 [[deps.TriplotBase]]
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
 uuid = "981d1d27-644d-49a2-9326-4793e63143c3"
@@ -1661,9 +1974,9 @@ uuid = "9d95972d-f1c8-5527-a6e0-b4b365fa01f6"
 version = "1.3.0"
 
 [[deps.URIs]]
-git-tree-sha1 = "074f993b0ca030848b897beff716d93aca60f06a"
+git-tree-sha1 = "b7a5e99f24892b6824a954199a45e9ffcc1c70f0"
 uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
-version = "1.4.2"
+version = "1.5.0"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
@@ -1685,9 +1998,9 @@ version = "0.4.1"
 
 [[deps.Unitful]]
 deps = ["Dates", "LinearAlgebra", "Random"]
-git-tree-sha1 = "1cd9b6d3f637988ca788007b7466c132feebe263"
+git-tree-sha1 = "607c142139151faa591b5e80d8055a15e487095b"
 uuid = "1986cc42-f94f-5a68-af5c-568840ba703d"
-version = "1.16.1"
+version = "1.16.3"
 
     [deps.Unitful.extensions]
     ConstructionBaseUnitfulExt = "ConstructionBase"
@@ -1699,9 +2012,9 @@ version = "1.16.1"
 
 [[deps.WGLMakie]]
 deps = ["Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "Hyperscript", "JSServe", "LinearAlgebra", "Makie", "Observables", "PNGFiles", "PrecompileTools", "RelocatableFolders", "ShaderAbstractions", "StaticArrays"]
-git-tree-sha1 = "3975f4325a7c8a16e347fe6ff97c2f615c344124"
+git-tree-sha1 = "4c0e405979b9d4a2d6b2cc15a00a201ff4788c3b"
 uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
-version = "0.8.11"
+version = "0.8.12"
 
 [[deps.WidgetsBase]]
 deps = ["Observables"]
@@ -1778,7 +2091,7 @@ version = "1.5.0+0"
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
-version = "1.2.13+0"
+version = "1.2.13+1"
 
 [[deps.isoband_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1801,7 +2114,7 @@ version = "0.15.1+0"
 [[deps.libblastrampoline_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
-version = "5.8.0+0"
+version = "5.8.0+1"
 
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1830,12 +2143,12 @@ version = "1.3.7+1"
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
-version = "1.52.0+0"
+version = "1.52.0+1"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
-version = "17.4.0+0"
+version = "17.4.0+2"
 
 [[deps.x264_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1851,9 +2164,10 @@ version = "3.5.0+0"
 """
 
 # ╔═╡ Cell order:
-# ╟─892d7378-324f-11ee-3112-db792e750301
+# ╠═892d7378-324f-11ee-3112-db792e750301
 # ╟─2a604aa9-078b-4e54-be72-51281f420d66
-# ╟─b347d4e3-eeae-4bcb-a009-303a363d4768
+# ╟─8eb74ec2-b08e-47dd-8571-df5797565416
+# ╠═b347d4e3-eeae-4bcb-a009-303a363d4768
 # ╟─02357408-0447-47f5-a912-749ac709c7e5
 # ╠═5ec54380-4f1b-499d-8170-8bfe3f6d302c
 # ╟─55d9582c-9b27-475a-832e-f6d04de4deba
@@ -1861,6 +2175,7 @@ version = "3.5.0+0"
 # ╟─4e3e3e63-424c-4738-a47a-da6a679a0aeb
 # ╠═acbf8686-9e45-406b-bb55-1ff5b53c2316
 # ╟─354d7de0-d334-44bc-9106-96d6a30dc17e
+# ╟─578645a8-5742-4647-8118-2e72e1f744d4
 # ╠═0d880813-bc71-4f0d-8987-93790f33903b
 # ╠═558f9ef8-1d5c-42d3-879e-1c41ca695464
 # ╟─d52cc7c0-fecf-400f-9a5f-27510b84115b
@@ -1872,5 +2187,61 @@ version = "3.5.0+0"
 # ╟─8036f7fd-6a8b-4d94-aa33-aafac0fbb45e
 # ╟─d07c02c7-dd4a-4b33-a0a1-8318b538c511
 # ╠═01defef3-e58e-4ab1-a5d7-fa35eae4c5e7
+# ╟─71b65ba5-61c2-44d0-bfd5-2498b56142ab
+# ╠═e27430ad-866d-4219-b8c2-9b26ba6ebff5
+# ╠═1f4243c5-024f-4eb7-a752-46d7ed7e0be1
+# ╠═6373b4f7-ac81-43bc-834b-ad0e91864cc5
+# ╠═68375f5b-be45-4a07-bbf6-f725637426b7
+# ╟─77728d46-2163-41bb-a260-3c88ca43e632
+# ╠═090602e0-4dd1-4151-8f6a-6dbcc8fc58a1
+# ╟─1160f576-ea96-461c-8a7a-2f3f0f33c318
+# ╠═8d70252d-037f-4e31-b2c6-12b8b857e2ae
+# ╠═3ff1053b-dbd4-4fd8-82b8-5e59915d3878
+# ╟─28518bb2-9016-494a-8535-0528ebb22306
+# ╠═aef2c250-c9a8-49b2-beea-866e0c787d6c
+# ╟─28e9cbd0-bdae-4df3-a8bb-e45d4c98423d
+# ╟─4b338224-0ba8-441f-b361-37fcffabd07d
+# ╠═2054da46-6571-4c42-9fd0-30dd6b211ad8
+# ╟─5cd267ca-d6f5-4d05-aea0-24e96211051a
+# ╟─22190240-4828-4843-a57d-6e9c40187300
+# ╟─55e478bc-991d-4c5b-96e1-07b8baf078a5
+# ╠═523bdea6-65ef-43fc-aa09-bc22c1c420e1
+# ╟─df6fa488-1055-440e-8bb7-e4e5479f7b51
+# ╠═4b9d72b3-f794-4b3c-9fdc-6575ac360d30
+# ╠═1d5a8d4c-59bf-439a-b5a5-b601e2dae12d
+# ╟─201ffa76-905a-4046-a25c-9f34fad27b70
+# ╟─f0b4d833-0085-4071-afac-3481d861b131
+# ╟─fdf048ea-8a12-4faf-9cab-9b86e5b12671
+# ╠═86d25030-8c11-4986-9b1e-41ede60e9417
+# ╠═acc34361-9524-4282-ad01-7f804cdfc6f8
+# ╠═5bb57399-f23e-451c-b911-16231ecf47ad
+# ╠═127e1440-aa75-42c5-ad65-174ce1ba8b1f
+# ╠═0d0435b2-6be1-4603-82c8-5649fa36887c
+# ╠═9ca975d7-f02c-4faa-b62f-0796704233a3
+# ╠═64e98c78-3958-4cf6-a286-b5a3b26aeb67
+# ╠═7e7fead1-9a85-490a-8e00-d41a55c4486b
+# ╠═5a34dfa5-54b6-4efd-8457-043bef69e949
+# ╠═6b709d3d-f58f-4d5f-8833-17c7515da744
+# ╠═4d8bd412-fd3d-4ea4-b87d-5c88c1abd5ea
+# ╠═d20e1ba3-c100-457f-8294-34ea54f10b20
+# ╠═fbb945ab-32ec-43b7-9242-738798ed7195
+# ╠═6255272b-e159-40f0-b16e-24780592032c
+# ╠═0a6d61dd-2763-474d-baa0-749cf50ace0d
+# ╠═419b1153-61c1-4465-ab34-00bda59a4853
+# ╠═66e38ecb-d4d8-440c-8267-ecfc20765e82
+# ╠═1e846ea5-f2b6-4a7e-80d3-2a6c6258603a
+# ╠═01fede42-efe7-4833-aeb6-c4d2fd11ef1c
+# ╠═a5fbd5cb-e12b-46f2-adad-6af8456ebbe7
+# ╠═e9277f3e-2bc6-461a-94bc-48d3c5855556
+# ╠═05545cf3-db6e-4903-8d62-72b8d109ad19
+# ╠═446b2639-f2d7-4d90-b86f-ab7d81d8fdb7
+# ╠═94c13430-2194-433c-85c9-3005b8237f67
+# ╠═58bb08ee-e30e-4a6e-8ef5-d0724112acd9
+# ╠═c26d44d1-ac3b-47b6-9a35-6d07a2f99462
+# ╠═c5fd63fa-bdd7-45bc-8bb4-66c51d9b44c4
+# ╠═bf3a1dc5-0a49-4afb-bdb6-feaf00336d00
+# ╠═7310adbe-6917-429e-a330-39d100edc946
+# ╠═f74d165b-ebfc-4075-b72d-75025c1227f7
+# ╠═be81c17f-8321-42fe-ba10-8c6ff5fbc983
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
