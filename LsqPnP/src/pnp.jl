@@ -16,17 +16,17 @@ import StatsBase: mean
 import Base: Fix1
 
 # outputs are in pixel coordinates, i.e. Point2(1.0, 2.0) would mean 0.00345mm down and 0.0069mm left
-function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
-                        points::Vector{T}) where T<:Union{ENU{T′}, XYZ{T′}} where T′<:Union{Meters, Float64} where T′′
-    # projection expects z axis to point forward, so we rotate accordingly
-    scale = let focal_length = 25mm,
-                pixel_size = 0.00345mm
-        focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
-    end
-    cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-    projected_points = map(Point2{T′′} ∘ cam_transform, Point3{T′}.(points))
-    projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
-end
+# function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
+#                         points::Vector{T}) where T<:Union{ENU{T′}, XYZ{T′}} where T′<:Union{Meters, Float64} where T′′
+#     # projection expects z axis to point forward, so we rotate accordingly
+#     scale = let focal_length = 25mm,
+#                 pixel_size = 0.00345mm
+#         focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
+#     end
+#     cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
+#     projected_points = map(ImgProj{T′′} ∘ cam_transform, Point3{T′}.(points))
+#     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
+# end
 # function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
 #                         points::Vector{XYZ{Meters}}) where T′′<:Union{Float64, Dual}
 #     # projection expects z axis to point forward, so we rotate accordingly
@@ -50,8 +50,10 @@ Optim.minimizer(lsr::LsqFit.LsqFitResult) = lsr.param
 Optim.converged(lsr::LsqFit.LsqFitResult) = lsr.converged
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
 DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
+
+
 function pnp2(world_pts::Vector{T},
-              pixel_locations::Vector{Point2{Pixels}},
+              pixel_locations::Vector{ImgProj{Pixels}},
               cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
               initial_guess::T = ENU(-100.0m, 0m, 30m),
               ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
@@ -64,11 +66,11 @@ function pnp2(world_pts::Vector{T},
     (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
 
     function model(world_pts_flat, pos::StaticVector{3, <:Real})
-        let proj = make_projection_fn(AffineMap(cam_rotation, XYZ{Meters}(pos*1m))),
-            unflatten_to_xyz(pts) = unflatten_points(XYZ{Meters}, pts*1m),
+        let proj = make_projection_fn(AffineMap(cam_rotation, XYZ(pos*1m))),
+            unflatten_to_xyz(pts) = unflatten_points(XYZ, pts*1m),
             f = flatten_points ∘ Fix1(broadcast, proj) ∘ unflatten_to_xyz
 
-            f(world_pts_flat)
+            f(world_pts_flat) .|> p′->ustrip.(pxl, p′)
         end
     end
 
@@ -77,83 +79,40 @@ function pnp2(world_pts::Vector{T},
                     flatten_points(pixel_locations),
                     MVector(initial_guess);
                     autodiff=:forward, store_trace=true)
-    return fit
+    return PNP3Sol((pos=XYZ(fit.param)*1m,))
 end
 
-function build_pnp_objective(
-             world_pts::Vector{T},
-             pixel_locations::Vector{<:Point2},
-             cam_rotation::Rotation{3};
-             rhos=nothing,
-             thetas=nothing,
-             feature_mask=[1;1;1],
-             only_x=false
-    ) where T<:Union{ENU{Float64}, XYZ{Float64}}
-
-    Threads.threadid() == 1 && @debug (size(pixel_locations), size(world_pts))
-    function f(C_t::StaticVector{3, T}) where T
-        # projected_points = project_points(AffineMap(cam_rotation, C_t), world_pts)
-        proj = make_projection_fn(XYZ(C_T*1m))
-        @assert size(projected_points) == size(pixel_locations)
-        (only_x ? return sum(getindex.((projected_points .- pixel_locations), 1).^2)
-                : return sum(norm.(projected_points.-pixel_locations)))
-    end
-    return f
-end
 
 Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
 Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
-function pnp(world_pts::Vector{T},
-             pixel_locations::Vector{Point2{Pixels}},
-             cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
-             initial_guess::T = ENU(-100.0m, 0m, 30m),
-             method=NelderMead(),
-             only_x=false
-             ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
-    # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
-    world_pts = map(p->ustrip.(m, p), world_pts) |> collect
-    pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
-    initial_guess = ustrip.(m, initial_guess)
-    cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
+function pnp(world_pts::Vector{XYZ{Meters}},
+             pixel_locations::Vector{ImgProj{Pixels}},
+             cam_rotation::Rotation{3, Float64};
+             initial_guess = XYZ(-100.0m, 0m, 30m),
+             )
 
-    f = build_pnp_objective(world_pts,
-                            pixel_locations,
-                            cam_rotation)
-    f_ = TwiceDifferentiable(f, MVector(1., 1, 1))
-
-    if Threads.threadid() == 1
-        @debug world_pts
-        @debug pixel_locations
+    function model(world_pts_flat, θ::StaticVector{3, <:Real})
+        world_pts = unflatten_points(XYZ{Meters}, world_pts_flat)
+        proj = make_projection_fn(AffineMap(cam_rotation, XYZ(θ*1m)))
+        projected_pts = proj.(world_pts)
+        flatten_points(projected_pts) .|> p′->ustrip(pxl, p′)
     end
-    # initial_guess = typeof(initial_guess)(initial_guess[1], initial_guess[2], max(initial_guess[3], 1.0))
-    # presolve = Optim.optimize(f_,
-    #                MVector(initial_guess),
-    #                method,
-    #                # NewtonTrustRegion(),
-    #                Optim.Options(f_tol=1e-7),
-    #                autodiff=:forward,
-    #                )
-    # return presolve
-    sol = LeastSquaresOptim.optimize(f,
-                   MVector(initial_guess),
-                   LevenbergMarquardt();
-                   # lower=[-Inf, -Inf, 0],
-                   autodiff=:forward,
-                   # f_tol=eps(Float32),
-                   x_tol=eps(Float32),
-                   # iterations=10,
-                   )
-    # @assert f(Optim.minimizer(sol)) < 1e4 (sol, Optim.minimizer(sol))
-    # (!isnothing(opt_traces) && push!(opt_traces, sol))
-    # @debug sol
-    return sol
+
+    fit = curve_fit(model,
+                    flatten_points(world_pts),
+                    flatten_points(pixel_locations) .|> p′->ustrip(pxl, p′),
+                    MVector(ustrip.(m, initial_guess));
+                    autodiff=:forwarddiff,
+                    store_trace=true)
+    return PNP3Sol((pos=XYZ(fit.param)*1m,))
+
 end
 
 "Hough transform."
-function compute_rho_theta(p1::Point2{T}, p2::Point2{T}, p3::Point2{T}) where T
+function compute_rho_theta(p1::StaticVector{2, T}, p2::StaticVector{2, T}, p3::StaticVector{2, T}) where T
     p4(λ) = p1 + λ*(p2-p1)
     λ = dot((p2-p1), (p3-p1)) / norm(p2-p1)^2
-    @assert isapprox(dot(p2-p1, p4(λ)-p3)/norm(p2), zero(T); atol=1e-4) "$(dot(p2-p1, p4(λ)-p3))"
+    @assert isapprox(dot(p2-p1, p4(λ)-p3)/oneunit(T)^2, 0.; atol=1e-4) "$(dot(p2-p1, p4(λ)-p3))"
     @debug λ, p4(λ)
     ρ = norm(p4(λ) - p3)
 
@@ -183,19 +142,16 @@ function hough_transform(projected_points)  # front left, front right, back left
     ρ_θ_lhs = compute_rho_theta(ppts[1], ppts[3], (ppts[1]+ppts[2])/2)
     ρ_θ_rhs = compute_rho_theta(ppts[2], ppts[4], (ppts[1]+ppts[2])/2)
     ρ = (; lhs=ρ_θ_lhs[1], rhs=ρ_θ_rhs[1])
-    θ = (; lhs=ρ_θ_lhs[2], rhs=ρ_θ_rhs[2])
+    θ = (; lhs=ρ_θ_lhs[2]*1rad, rhs=ρ_θ_rhs[2]*1rad)
     ρ, θ
 end
 
 
 
-function compute_Δy(p_lhs::XYZ{Meters}, p_rhs::XYZ{Meters})::Meters
+function compute_Δy(p_lhs::XYZ{T}, p_rhs::XYZ{T})::T where T
     abs(p_rhs[2] - p_lhs[2])
 end
-function compute_Δy(p_lhs::XYZ{Float64}, p_rhs::XYZ{Float64})
-    abs(p_rhs[2] - p_lhs[2])
-end
-function compute_Δx(runway_corners::Vector{XYZ{Meters}})
+function compute_Δx(runway_corners::Vector{XYZ{T}})::T where T
     Δx = (  mean([runway_corners[3].x, runway_corners[4].x])
           - mean([runway_corners[1].x, runway_corners[2].x]) )
 end

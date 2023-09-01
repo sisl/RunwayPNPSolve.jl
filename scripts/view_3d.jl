@@ -1,6 +1,7 @@
 using Revise
 using PNPSolve
 using PNPSolve.LsqPnP: pnp2
+using PNPSolve.LsqPnP.RunwayLib: ImgProj, make_projection_fn
 # using CameraModels
 using LinearAlgebra
 using Rotations
@@ -97,16 +98,16 @@ C_t_true = lift(scenario_menu.selection) do menu
     menu == "mid (1000m)" && return XYZ([-1000.0m, 0m, 125.0 / 6 * 1m])
     menu == "far (6000m)" && return XYZ([-6000.0m, 0m, 123.0m])
 end
-function project_points(
-    cam_pose::AbstractAffineMap,
-    points::Vector{XYZ{T}},
-) where {T<:Union{Float64,Meters}}
-    focal_length = 25mm
-    pixel_size = 0.00345mm
-    scale = focal_length / pixel_size |> upreferred  # solve units, i.e. [mm] / [m]
-    cam_transform = cameramap(scale) ∘ LinearMap(RotY(-τ / 4)) ∘ inv(cam_pose)
-    projected_points = map(Point2{Float64} ∘ cam_transform ∘ Point3{T}, points)
-end
+# function project_points(
+#     cam_pose::AbstractAffineMap,
+#     points::Vector{XYZ{T}},
+# ) where {T<:Union{Float64,Meters}}
+#     focal_length = 25mm
+#     pixel_size = 0.00345mm
+#     scale = focal_length / pixel_size |> upreferred  # solve units, i.e. [mm] / [m]
+#     cam_transform = cameramap(scale) ∘ LinearMap(RotY(-τ / 4)) ∘ inv(cam_pose)
+#     projected_points = map(ImgProj{Float64} ∘ cam_transform ∘ Point3{T}, points)
+# end
 dims_2d_to_3d = LinearMap(1.0 * I(3)[:, 1:2])
 dims_3d_to_2d = LinearMap(1.0 * I(3)[1:2, :])
 cam_pose_gt = @lift AffineMap(R_t_true, $C_t_true)
@@ -124,7 +125,8 @@ mapeach(f, obs::Observable{<:AbstractVector}) = map(el -> map(f, el), obs)
 function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title = nothing)
     # Util
     projected_coords_to_plotting_coords = ∘(
-        Point2d,
+        ImgProj,
+        (p->ustrip.(pxl, p)),
         dims_3d_to_2d,
         LinearMap(RotZ(1 / 4 * τ)),
         LinearMap(RotY(1 / 2 * τ)),
@@ -148,13 +150,13 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
 
     # projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
     # projected_points = @lift map($projective_transform, runway_corners)
-    projected_points = @lift project_points($cam_pose, runway_corners)
+    projected_points = @lift make_projection_fn($cam_pose).(runway_corners)
     projected_points_rect = @lift $projected_points[[1, 2, 4, 3, 1]]
 
     lines!(cam_view_ax, @map(projected_coords_to_plotting_coords.(&projected_points_rect)))
     # lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, projected_points_rect))
     # plot far points in 2d
-    projected_points_far = @lift project_points($cam_pose, runway_corners_far)
+    projected_points_far = @lift make_projection_fn($cam_pose).(runway_corners_far)
     projected_lines_far = (
         @lift([$projected_points[1], $projected_points_far[1]]),
         @lift([$projected_points[2], $projected_points_far[2]])
@@ -301,8 +303,7 @@ perturbed_pose_estimates = lift(
     num_pose_est,
     corr_noise_toggle.active,
 ) do cam_pose_gt, σ, σ_angle, feature_toggles, noise_toggles, num_pose_est, corr_noise
-    projected_points::Vector{Point2{Pixels}} =
-        project_points(cam_pose_gt, runway_corners) .* 1pxl
+    projected_points::Vector{ImgProj{Pixels}} = make_projection_fn(cam_pose_gt).(runway_corners)
     ρ, θ = hough_transform(ustrip.(projected_points))
     # @show rad2deg.([θ[:lhs], θ[:rhs]])
     # @show rad2deg.(θ[:lhs] - θ[:rhs] - τ/2)
@@ -319,21 +320,21 @@ perturbed_pose_estimates = lift(
         let Σ = (corr_noise ? make_corr_matrix(4, 0.9) : Matrix{Float64}(I(4))),
             D = MvNormal(zeros(4), Σ)
 
-            noise_mask .* σ^2 .* eachrow([rand(D) rand(D)]) .* 1pxl
+            noise_mask .* σ^2 .* Point2.(eachrow([rand(D) rand(D)])) .* 1pxl
         end
     sample_angular_noise() = σ_angle * 1rad * randn()
     sample_pos_noise() = 10 * randn(3) .* 1m
     sols = ThreadsX.collect(
-        LsqPnP.pnp3(
-            runway_corners,
-            (projected_points .+ sample_measurement_noise()),
-            (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
+        LsqPnP.pnp(
+            runway_corners[feature_mask],
+            (projected_points .+ sample_measurement_noise())[feature_mask],
+            # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
             initial_guess = cam_pose_gt.translation + sample_pos_noise(),
         ) for _ = 1:num_pose_est
     )
     global opt_traces = sols
-    pts = ((XYZ ∘ Optim.minimizer).(sols))
+    pts = Optim.minimizer.(sols)
     # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect

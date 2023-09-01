@@ -4,6 +4,7 @@ import CoordinateTransformations: cameramap
 using Rotations
 using StaticArraysCore
 import StaticArraysCore: StaticVector, FieldVector
+import StaticArraysCore: similar_type, Size
 using GeometryBasics
 using GeodesyXYZExt
 using Unitful, Unitful.DefaultSymbols
@@ -46,6 +47,7 @@ struct ImgProj{T} <: FieldVector{2, T}
     x
     y
 end
+similar_type(::Type{A}, ::Type{T}, s::Size{S}) where {A<:ImgProj, T, S} = ImgProj{T}
 # const ImgProj{T} = Point2{T}
 # function (Point2)(p::Point2{T}) where {T}
 #     ImgProj{T}(p)
