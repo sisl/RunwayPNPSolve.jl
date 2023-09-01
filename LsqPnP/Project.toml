@@ -4,6 +4,7 @@ authors = ["Romeo Valentin <romeo.valentin.int@airbus-sv.com>"]
 version = "0.1.0"
 
 [deps]
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Geodesy = "0ef565a4-170c-5f04-8de2-149903a85f3d"
 GeodesyXYZExt = "987ad435-e993-44fa-9c05-fce934ed82f8"

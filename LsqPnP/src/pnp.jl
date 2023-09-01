@@ -1,4 +1,5 @@
 using Rotations
+using ComponentArrays
 using CoordinateTransformations, Geodesy, GeodesyXYZExt
 using LinearAlgebra: dot, norm, I, normalize
 using Optim
@@ -8,7 +9,7 @@ using Roots
 using LeastSquaresOptim
 using LsqFit
 using Unitful: Length
-using StaticArrays: StaticVector, MVector, SVector, MArray
+using StaticArrays: StaticVector, MVector, SVector, MArray, FieldVector
 using Unitful: ustrip
 import LsqFit.DiffResults: DiffResult, MutableDiffResult
 import LsqFit.ForwardDiff: Dual
@@ -20,35 +21,51 @@ import Base: Fix1
 # LsqFit expects vector valued in- and outputs, so we have to flatten/unflatten the vector of points.
 # Also, we overload the Optim.minimizer/converged functions for easier back-and-forth between Optim.jl and LsqFit.jl.
 flatten_points(pts::Vector{<:StaticVector}) = stack(pts, dims=1)[:]
-unflatten_points(P::Type{<:StaticVector}, pts::Vector{<:Number}) = P.(eachrow(reshape(pts, :, length(P))))
+flatten_points(pts::Vector{<:FieldVector{2, T}}) where {T} = begin
+    data = stack(pts, dims=1)
+    ComponentVector((; x=data[:, 1],
+                       y=data[:, 2]))
+end
+flatten_points(pts::Vector{<:FieldVector{3, T}}) where {T} = begin
+    data = stack(pts, dims=1)
+    ComponentVector((; x=data[:, 1],
+                       y=data[:, 2],
+                       z=data[:, 3]))
+end
+unflatten_points(P::Type{<:StaticVector}, pts::AbstractVector{<:Number}) = P.(eachrow(reshape(pts, :, length(P))))
 
 Optim.minimizer(lsr::LsqFit.LsqFitResult) = lsr.param
 Optim.converged(lsr::LsqFit.LsqFitResult) = lsr.converged
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
 DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
 function pnp(world_pts::Vector{XYZ{Meters}},
-              pixel_locations::Vector{ImgProj{Pixels}},
-              cam_rotation::Rotation{3, Float64};
-              initial_guess::XYZ{Meters} = XYZ(-100.0m, 0m, 30m),
-              )
+             pixel_locations::Vector{ImgProj{Pixels}},
+             cam_rotation::Rotation{3, Float64};
+             initial_guess::XYZ{Meters} = XYZ(-100.0m, 0m, 30m),
+             components=[:x, :y],
+             )
+    # early exit if no points given
+    (length(world_pts) == 0) && return PNP3Sol((pos=initial_guess, ))
+
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
     world_pts = map(p->ustrip.(m, p), world_pts) |> collect
+    N_p = length(world_pts)
     pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
     initial_guess = ustrip.(m, initial_guess)
 
-    (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
 
     function model(world_pts_flat, pos::StaticVector{3, <:Real})
         proj = make_projection_fn(AffineMap(cam_rotation, XYZ(pos*1m)))
         unflatten_to_xyz(pts) = unflatten_points(XYZ, pts*1m)
         f = flatten_points ∘ Fix1(broadcast, proj) ∘ unflatten_to_xyz
 
-        f(world_pts_flat) .|> p′->ustrip.(pxl, p′)
+        res = f(world_pts_flat) .|> p′->ustrip.(pxl, p′)
+        res[components] |> collect
     end
 
     fit = curve_fit(model,
                     flatten_points(world_pts),
-                    flatten_points(pixel_locations),
+                    flatten_points(pixel_locations)[components] |> collect,
                     MVector(initial_guess);
                     autodiff=:forward, store_trace=true)
     return PNP3Sol((pos=XYZ(fit.param)*1m,))

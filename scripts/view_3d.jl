@@ -1,6 +1,6 @@
 using Revise
 using PNPSolve
-using PNPSolve.LsqPnP: pnp2
+using PNPSolve.LsqPnP: pnp
 using PNPSolve.LsqPnP.RunwayLib: ImgProj, make_projection_fn
 # using CameraModels
 using LinearAlgebra
@@ -79,16 +79,19 @@ rhs_grid = GridLayout(fig[1, 2]; tellheight = false)
 toggle_grid = GridLayout(rhs_grid[1, 1])
 Label(toggle_grid[1, 2], "Use feature");
 Label(toggle_grid[1, 3], "Add noise");
+use_x_toggle = Toggle(toggle_grid[5, 2]; active=true)
+use_y_toggle = Toggle(toggle_grid[5, 3]; active=true)
+use_xy = @lift [sym for (sym, active) in [:x=>$(use_x_toggle.active), :y=>$(use_y_toggle.active)] if active]
 # Set up noise toggles, scenario menu, num pose estimates
 feature_toggles_ = [Toggle(toggle_grid[1+i, 2]; active = true) for i = 1:3]
 noise_toggles_ = [Toggle(toggle_grid[1+i, 3]; active = true) for i = 1:3]
-toggle_labels = let labels = ["Near corners", "Far corners", "Edges"]
-    [Label(toggle_grid[1+i, 1], labels[i]) for i = 1:3]
+toggle_labels = let labels = ["Near corners", "Far corners", "Edges", "Use x/y"]
+    [Label(toggle_grid[1+i, 1], labels[i]) for i = 1:length(labels)]
 end
 ## Set up scenario, which affects cam position and therefore all the projections
-Label(toggle_grid[5, 1], "Scenario:")
+Label(toggle_grid[length(toggle_labels)+2, 1], "Scenario:")
 scenario_menu = Menu(
-    toggle_grid[5, 2];
+    toggle_grid[length(toggle_labels)+2, 2];
     options = ["near (300m)", "mid (1000m)", "far (6000m)"],
     default = "far (6000m)",
 )
@@ -275,19 +278,19 @@ noise_toggles = lift(
 ) do near, far, angle
     Bool[near, far, angle]
 end
-Label(toggle_grid[6, 1], "Num pose estimates: ")
+Label(toggle_grid[length(toggle_labels)+3, 1], "Num pose estimates: ")
 num_pose_est_box =
-    Textbox(toggle_grid[6, 2], stored_string = "100", validator = Int, tellwidth = false)
+    Textbox(toggle_grid[length(toggle_labels)+3, 2], stored_string = "100", validator = Int, tellwidth = false)
 num_pose_est = lift(num_pose_est_box.stored_string) do str
     tryparse(Int, str)
 end
-Label(toggle_grid[7, 1], "Correlated noise")
-corr_noise_toggle = Toggle(toggle_grid[7, 2]; active = false)
+Label(toggle_grid[length(toggle_labels)+4, 1], "Correlated noise")
+corr_noise_toggle = Toggle(toggle_grid[length(toggle_labels)+4, 2]; active = false)
 # corr_noise = Observable(false)
-Label(toggle_grid[8, 1], "Mean err")
-Label(toggle_grid[9, 1], "Std err")
-mean_box = Label(toggle_grid[8, 2], "")
-std_box = Label(toggle_grid[9, 2], "")
+Label(toggle_grid[length(toggle_labels)+5, 1], "Mean err")
+Label(toggle_grid[length(toggle_labels)+6, 1], "Std err")
+mean_box = Label(toggle_grid[length(toggle_labels)+5, 2], "")
+std_box = Label(toggle_grid[length(toggle_labels)+6, 2], "")
 # connect!(corr_noise_toggle.active, corr_noise)
 
 scatter!(scene.scene, mapeach(ustrip, C_t_true); color = :green, markersize = 27)
@@ -299,10 +302,11 @@ perturbed_pose_estimates = lift(
     σ,
     σ_angle,
     feature_toggles,
+    use_xy,
     noise_toggles,
     num_pose_est,
     corr_noise_toggle.active,
-) do cam_pose_gt, σ, σ_angle, feature_toggles, noise_toggles, num_pose_est, corr_noise
+) do cam_pose_gt, σ, σ_angle, feature_toggles, use_xy, noise_toggles, num_pose_est, corr_noise
     projected_points::Vector{ImgProj{Pixels}} = make_projection_fn(cam_pose_gt).(runway_corners)
     ρ, θ = hough_transform(ustrip.(projected_points))
     # @show rad2deg.([θ[:lhs], θ[:rhs]])
@@ -331,6 +335,7 @@ perturbed_pose_estimates = lift(
             # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
             initial_guess = cam_pose_gt.translation + sample_pos_noise(),
+            components=use_xy,
         ) for _ = 1:num_pose_est
     )
     global opt_traces = sols
