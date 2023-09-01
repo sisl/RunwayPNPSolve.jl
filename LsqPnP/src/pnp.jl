@@ -15,30 +15,6 @@ import LsqFit.ForwardDiff: Dual
 import StatsBase: mean
 import Base: Fix1
 
-# outputs are in pixel coordinates, i.e. Point2(1.0, 2.0) would mean 0.00345mm down and 0.0069mm left
-# function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
-#                         points::Vector{T}) where T<:Union{ENU{T′}, XYZ{T′}} where T′<:Union{Meters, Float64} where T′′
-#     # projection expects z axis to point forward, so we rotate accordingly
-#     scale = let focal_length = 25mm,
-#                 pixel_size = 0.00345mm
-#         focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
-#     end
-#     cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-#     projected_points = map(ImgProj{T′′} ∘ cam_transform, Point3{T′}.(points))
-#     projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
-# end
-# function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T′′}},
-#                         points::Vector{XYZ{Meters}}) where T′′<:Union{Float64, Dual}
-#     # projection expects z axis to point forward, so we rotate accordingly
-#     scale = let focal_length = 25mm,
-#                 pixel_size = 0.00345mm
-#         focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
-#     end
-#     cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-#     projected_points = map(Point2 ∘ cam_transform, Point3.(points))
-#     projected_points = projected_points*1pxl
-# end
-
 ### Solution using Levenberg-Marquardt algo from LsqFit.jl
 # I've tried before to use LeastSquaresOptim but got bad results.
 # LsqFit expects vector valued in- and outputs, so we have to flatten/unflatten the vector of points.
@@ -50,28 +26,24 @@ Optim.minimizer(lsr::LsqFit.LsqFitResult) = lsr.param
 Optim.converged(lsr::LsqFit.LsqFitResult) = lsr.converged
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
 DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
-
-
-function pnp2(world_pts::Vector{T},
+function pnp(world_pts::Vector{XYZ{Meters}},
               pixel_locations::Vector{ImgProj{Pixels}},
-              cam_rotation::Union{LinearMap{<:Rotation{3, Float64}}, Rotation{3, Float64}};
-              initial_guess::T = ENU(-100.0m, 0m, 30m),
-              ) where {T<:Union{ENU{Meters}, XYZ{Meters}}}
+              cam_rotation::Rotation{3, Float64};
+              initial_guess::XYZ{Meters} = XYZ(-100.0m, 0m, 30m),
+              )
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
     world_pts = map(p->ustrip.(m, p), world_pts) |> collect
     pixel_locations = map(p->ustrip.(pxl, p), pixel_locations) |> collect
     initial_guess = ustrip.(m, initial_guess)
-    cam_rotation = (cam_rotation isa LinearMap ? cam_rotation.linear : cam_rotation)
 
     (length(world_pts) == 0) && return LsqFit.LsqFitResult(initial_guess, 0*similar(initial_guess), [], false, [], [])
 
     function model(world_pts_flat, pos::StaticVector{3, <:Real})
-        let proj = make_projection_fn(AffineMap(cam_rotation, XYZ(pos*1m))),
-            unflatten_to_xyz(pts) = unflatten_points(XYZ, pts*1m),
-            f = flatten_points ∘ Fix1(broadcast, proj) ∘ unflatten_to_xyz
+        proj = make_projection_fn(AffineMap(cam_rotation, XYZ(pos*1m)))
+        unflatten_to_xyz(pts) = unflatten_points(XYZ, pts*1m)
+        f = flatten_points ∘ Fix1(broadcast, proj) ∘ unflatten_to_xyz
 
-            f(world_pts_flat) .|> p′->ustrip.(pxl, p′)
-        end
+        f(world_pts_flat) .|> p′->ustrip.(pxl, p′)
     end
 
     fit = curve_fit(model,
@@ -82,31 +54,6 @@ function pnp2(world_pts::Vector{T},
     return PNP3Sol((pos=XYZ(fit.param)*1m,))
 end
 
-
-Optim.minimizer(lsr::LeastSquaresResult) = lsr.minimizer
-Optim.converged(lsr::LeastSquaresResult) = LeastSquaresOptim.converged(lsr)
-function pnp(world_pts::Vector{XYZ{Meters}},
-             pixel_locations::Vector{ImgProj{Pixels}},
-             cam_rotation::Rotation{3, Float64};
-             initial_guess = XYZ(-100.0m, 0m, 30m),
-             )
-
-    function model(world_pts_flat, θ::StaticVector{3, <:Real})
-        world_pts = unflatten_points(XYZ{Meters}, world_pts_flat)
-        proj = make_projection_fn(AffineMap(cam_rotation, XYZ(θ*1m)))
-        projected_pts = proj.(world_pts)
-        flatten_points(projected_pts) .|> p′->ustrip(pxl, p′)
-    end
-
-    fit = curve_fit(model,
-                    flatten_points(world_pts),
-                    flatten_points(pixel_locations) .|> p′->ustrip(pxl, p′),
-                    MVector(ustrip.(m, initial_guess));
-                    autodiff=:forwarddiff,
-                    store_trace=true)
-    return PNP3Sol((pos=XYZ(fit.param)*1m,))
-
-end
 
 "Hough transform."
 function compute_rho_theta(p1::StaticVector{2, T}, p2::StaticVector{2, T}, p3::StaticVector{2, T}) where T
@@ -156,15 +103,9 @@ function compute_Δx(runway_corners::Vector{XYZ{T}})::T where T
           - mean([runway_corners[1].x, runway_corners[2].x]) )
 end
 
-# function compute_Δy′(p′_lhs::Point2{Pixels}, p′_rhs::Point2{Pixels})::Pixels
-#     abs(p′_rhs[2] - p′_lhs[2])
-# end
 function compute_Δy′(p′_lhs::StaticVector{2, T}, p′_rhs::StaticVector{2, T}) where T
     abs(p′_rhs[2] - p′_lhs[2])
 end
-# function compute_Δx′(p′_mid_near::Point2{Pixels}, p′_mid_far::Point2{Pixels})::Meters
-#     uconvert(m, abs(p′_mid_far[1] - p′_mid_near[1]))
-# end
 function compute_Δx′(p′_mid_near::StaticVector{2, T}, p′_mid_far::StaticVector{2, T}) where T
     abs(p′_mid_far[1] - p′_mid_near[1])
 end
