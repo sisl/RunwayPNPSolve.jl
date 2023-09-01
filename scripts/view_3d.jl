@@ -131,8 +131,8 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
         ImgProj,
         (p->ustrip.(pxl, p)),
         dims_3d_to_2d,
-        LinearMap(RotZ(1 / 4 * τ)),
-        LinearMap(RotY(1 / 2 * τ)),
+        # LinearMap(RotZ(1 / 4 * τ)),
+        # LinearMap(RotY(1 / 2 * τ)),
         dims_2d_to_3d,
     )
 
