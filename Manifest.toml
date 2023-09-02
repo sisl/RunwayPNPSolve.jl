@@ -1087,7 +1087,7 @@ uuid = "2fda8390-95c7-5789-9bda-21331edee243"
 version = "0.13.0"
 
 [[deps.LsqPnP]]
-deps = ["CoordinateTransformations", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LeastSquaresOptim", "LinearAlgebra", "LsqFit", "Optim", "ReTest", "Roots", "Rotations", "RunwayLib", "StaticArrays", "StatsBase", "Tau", "Unitful"]
+deps = ["ComponentArrays", "CoordinateTransformations", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LeastSquaresOptim", "LinearAlgebra", "LsqFit", "Optim", "ReTest", "Roots", "Rotations", "RunwayLib", "StaticArrays", "StatsBase", "Tau", "Unitful"]
 path = "/Users/romeovalentin/Documents/PNPSolve/LsqPnP/"
 uuid = "448f7bbe-c51f-47ba-87ef-d1481ee1c501"
 version = "0.1.0"

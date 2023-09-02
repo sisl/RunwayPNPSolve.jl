@@ -32,11 +32,14 @@ Pixels = typeof(1.0pxl)
 """
 struct ProjectionMap{N} end
 getaxis(::ProjectionMap{N}) where {N} = N
+function projectionmap_(::Val{N}, svec::StaticVector{3,T}) where {N, T}
+    idx = filter(!=(N), first(axes(svec)))
+    proj = svec[idx] * inv(svec[N])
+    return proj
+end
 function (pmap::ProjectionMap)(svec::StaticVector{3,T}) where {T}
     N = getaxis(pmap)
-    idx = filter(!=(N), axes(svec)[1])
-    proj = (svec[idx]) * inv(svec[N])
-    return ImgProj(proj)
+    projectionmap_(Val(N), svec)
 end
 cameramap(::Val{N}) where {N} = ProjectionMap{N}()
 cameramap(::Val{N}, scale::Number) where {N} =
@@ -70,7 +73,7 @@ function make_projection_fn(cam_pose::AffineMap{<:Rotation{3,Float64},<:XYZ})
     end
     cam_transform = cameramap(Val(1), scale) ∘ inv(cam_pose)
     function proj(p::XYZ{T})::ImgProj where T
-        (ImgProj ∘ cam_transform ∘ Point3{T})(p)
+        (ImgProj ∘ cam_transform)(p)
     end
     function proj(rc::RunwayCorners(XYZ{Meters}))::RunwayCorners(ImgProj{Pixels})
         RunwayCorners(ImgProj)(proj.(values(rc)))
