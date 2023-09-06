@@ -88,4 +88,5 @@ end
 
 export ImgProj, RunwayCorners, make_projection_fn
 export Angle, Meters, Pixels, pxl
+export Point2, Point3
 end # module RunwayLib
