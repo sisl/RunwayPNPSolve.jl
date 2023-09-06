@@ -60,6 +60,7 @@ end
 function make_alongtrack_distance_df(; N_measurements=1000,
                                        feature_mask=1:2,
                                        parallel=true,
+                                       σ_pxl=1pxl,
                                        kwargs...)
     distances = (300.0:100:6000.0).*1m
     colnames = [:alongtrack_distance, :err_x, :err_y, :err_z]
@@ -80,7 +81,7 @@ function make_alongtrack_distance_df(; N_measurements=1000,
         pixel_locs = projection_fn.(corners)
 
         pnp(corners[feature_mask],
-            (pixel_locs+sample_measurement_noise(length(corners), σ=1pxl))[feature_mask],
+            (pixel_locs+sample_measurement_noise(length(corners), σ=σ_pxl))[feature_mask],
             camera_rot;
             initial_guess = camera_pos + sample_pos_noise()).pos - camera_pos
     end
@@ -136,11 +137,6 @@ function plot_alongtrack_distance_errors(; features=(feature_mask=(1:2), feature
         end
     end
 
-    # fig = draw(plt;
-    #      facet=(; linkyaxes = :none),
-    #      axis=(yminorgridvisible=true, ygridvisible=true, yminorgridcolor=(:red, 0.5), ygridcolor=(:gray, 0.5),
-    #            xminorgridvisible=true, xgridvisible=true,
-    #            ))
     Label(fig[0, 1:1], "Estimation errors over alongtrack distance ($(feature_str))";
             fontsize=16, font=:bold)
     resizetocontent!(fig)
