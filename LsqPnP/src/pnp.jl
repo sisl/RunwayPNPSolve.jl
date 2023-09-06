@@ -15,6 +15,7 @@ import LsqFit.DiffResults: DiffResult, MutableDiffResult
 import LsqFit.ForwardDiff: Dual
 import StatsBase: mean
 import Base: Fix1
+import IntervalSets: (..)
 
 ### Solution using Levenberg-Marquardt algo from LsqFit.jl
 # I've tried before to use LeastSquaresOptim but got bad results.
@@ -45,6 +46,12 @@ function pnp(world_pts::Vector{XYZ{Meters}},
              )
     # early exit if no points given
     (length(world_pts) == 0) && return PNP3Sol((pos=initial_guess, ))
+
+    in_camera_img(p::ImgProj{Pixels}) = all(p .∈ [(-3000÷2*1pxl) .. (3000÷2*1pxl);
+                                                  (-4096÷2*1pxl) .. (4096÷2*1pxl)])
+    in_camera_img_mask = in_camera_img.(pixel_locations)
+    world_pts = world_pts[in_camera_img_mask]
+    pixel_locations = pixel_locations[in_camera_img_mask]
 
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
     world_pts = map(p->ustrip.(m, p), world_pts) |> collect
