@@ -46,6 +46,7 @@ cameramap(::Val{N}, scale::Number) where {N} =
     LinearMap(UniformScaling(scale)) ∘ ProjectionMap{N}()
 
 
+" x points up, y points left "
 struct ImgProj{T} <: FieldVector{2, T}
     x
     y

@@ -34,6 +34,8 @@ flatten_points(pts::Vector{<:FieldVector{3, T}}) where {T} = begin
                        z=data[:, 3]))
 end
 unflatten_points(P::Type{<:StaticVector}, pts::AbstractVector{<:Number}) = P.(eachrow(reshape(pts, :, length(P))))
+in_camera_img(p::ImgProj{Pixels}) = all(p .∈ [(-3000÷2*1pxl) .. (3000÷2*1pxl);
+                                                (-4096÷2*1pxl) .. (4096÷2*1pxl)])
 
 # We need to overload DiffResults to support mutable static arrays, see https://github.com/JuliaDiff/DiffResults.jl/issues/25
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
@@ -47,11 +49,10 @@ function pnp(world_pts::Vector{XYZ{Meters}},
     # early exit if no points given
     (length(world_pts) == 0) && return PNP3Sol((pos=initial_guess, ))
 
-    in_camera_img(p::ImgProj{Pixels}) = all(p .∈ [(-3000÷2*1pxl) .. (3000÷2*1pxl);
-                                                  (-4096÷2*1pxl) .. (4096÷2*1pxl)])
     in_camera_img_mask = in_camera_img.(pixel_locations)
     world_pts = world_pts[in_camera_img_mask]
     pixel_locations = pixel_locations[in_camera_img_mask]
+    (length(world_pts) == 0) && error("No runway points in camera frame during pnp.")
 
     # strip units for Optim.jl package. See https://github.com/JuliaNLSolvers/Optim.jl/issues/695.
     world_pts = map(p->ustrip.(m, p), world_pts) |> collect

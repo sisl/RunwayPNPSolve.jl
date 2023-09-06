@@ -56,20 +56,15 @@ angle_to_ENU(θ::Angle) = let
     θ = -θ  # flip orientation
     θ = θ + 90°  # orient from x axis (east)
 end
-function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Angle;
-                                  length=1000m) where T<:Length
+function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Angle) where T<:Length
     # Bearing is defined in degrees, clockwise, from north.
     # We want it in rad, counterclockwise (i.e. in accordance to z axis), from east (x axis).
     bearing = angle_to_ENU(bearing)
 
-    threshold_far = threshold + length * [cos(bearing); sin(bearing); 0];
+    front_left  = threshold + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
+    front_right = threshold + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
 
-    front_left  = threshold     + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
-    front_right = threshold     + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
-    # back_left   = threshold_far + width/2 * [cos(bearing+90°); sin(bearing+90°); 0]
-    # back_right  = threshold_far + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
-
-    return ENU{typeof(1.0m)}[front_left, front_right]  #, back_left, back_right]
+    return ENU{Meters}[front_left, front_right]  #, back_left, back_right]
 end
 
 function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
@@ -87,19 +82,14 @@ function compute_thresholds_and_corners_in_ENU(
         runways_df::DataFrame,
         origin::LLA)::Tuple{Vector{ENU{Meters}}, Vector{ENU{Meters}}}
     thresholds::Vector{ENU{Meters}} = [
-        let
-            thres = ENUfromLLA(origin, DATUM)(
-                LLA(row[["THR Lat", "THR Long", "THR Elev"]]...)
-            )
-            ENU([thres...]m)  # assign unit "meter"
-        end
+        thres = ENUfromLLA(origin, DATUM)(
+            LLA(row[["THR Lat", "THR Long", "THR Elev"]]...)
+        ) * 1m
         for row in eachrow(runways_df)
     ]
 
     corners::Vector{ENU{Meters}} = vcat([
-        let
-            construct_runway_corners(thres, width, bearing; length=3000m)
-        end
+        construct_runway_corners(thres, width, bearing)
         for (thres, width, bearing) in zip(thresholds,
                                         runways_df[:, "RWY Width (m)"]m,
                                         runways_df[:, "True Bearing" ]°)
