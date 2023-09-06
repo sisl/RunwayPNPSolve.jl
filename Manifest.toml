@@ -2,7 +2,7 @@
 
 julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "94ae8a18c65df359a315b9575b65ea9e25310b34"
+project_hash = "e486bc78875ea95d17a48fbdea8f9b6acfb7d539"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1639,7 +1639,7 @@ uuid = "5eaf0fd0-dfba-4ccb-bf02-d820a40db705"
 version = "0.2.1"
 
 [[deps.RunwayLib]]
-deps = ["CoordinateTransformations", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Unitful"]
+deps = ["CoordinateTransformations", "DataFrames", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Unitful", "XLSX"]
 path = "/Users/romeovalentin/Documents/PNPSolve/RunwayLib/"
 uuid = "21826f37-226f-4b4e-8327-0e174ca2fff2"
 version = "0.1.0"
@@ -2057,9 +2057,9 @@ version = "0.5.5"
 
 [[deps.XLSX]]
 deps = ["Artifacts", "Dates", "EzXML", "Printf", "Tables", "ZipFile"]
-git-tree-sha1 = "d6af50e2e15d32aff416b7e219885976dc3d870f"
+git-tree-sha1 = "5ad91b49c81a6f84621804d6de2a83400ccd4bd8"
 uuid = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
-version = "0.9.0"
+version = "0.10.0"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]

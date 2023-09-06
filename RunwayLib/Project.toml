@@ -5,12 +5,15 @@ version = "0.1.0"
 
 [deps]
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Geodesy = "0ef565a4-170c-5f04-8de2-149903a85f3d"
 GeodesyXYZExt = "987ad435-e993-44fa-9c05-fce934ed82f8"
 GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+XLSX = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

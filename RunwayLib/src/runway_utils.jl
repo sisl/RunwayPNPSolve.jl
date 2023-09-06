@@ -2,24 +2,9 @@ using DataFrames, XLSX
 using Rotations, CoordinateTransformations, Geodesy
 using Unitful, Unitful.DefaultSymbols
 import Unitful: Length, ustrip, uconvert
-import StaticArrays: StaticVector
-import Base: zero
-# Angle = Union{typeof(1.0°), typeof(1.0rad)};
-# Meters = typeof(1.0m)
-# ustrip(vec::ENU{Q}) where Q <: Length =
-#     ENU{Q.types[1]}(map(ustrip, vec)...)
-# ustrip(u::Q, vec::ENU{Q′}) where {Q, Q′<:Unitful.Units} =
-#     ENU{Q.types[1]}(map(x->ustrip(Q, x), vec)...)
-# # ustrip(pos::ENU{Length}) = ustrip.([pos...]) |> ENU
-# # uconvert(u::Unitful.Units, pos::ENU{<:Length}) = uconvert.(u, pos)
-# uconvert(u::Unitful.Units, pos::ENU{<:Quantity}) = uconvert.(u, pos)
-# uconvert(u::Unitful.Units, map::AffineMap) = AffineMap(map.linear, uconvert.(u, map.translation))
-# uconvert(u::Unitful.Units, pt::Point) = uconvert.(u, pt)
-# ustrip(map::AffineMap) = AffineMap(map.linear, ustrip.(map.translation))
-# # Base.zero(u::T) where T <: Quantity = T(0)
+import StaticArraysCore: StaticVector
+import Base: zero  # to get the additive identity of any type
 const DATUM=wgs84
-# @unit pxl "px" Pixel 0.00345mm false
-# Pixels = typeof(1.0pxl)
 
 @enum Representation begin
   NEAR_CORNERS
@@ -45,17 +30,13 @@ function load_runways(runway_file=joinpath(pkgdir(PNPSolve), "data", "2307 A3 Re
     XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
 end
 
-# get_unique_runways(runway_identifier;
-#                    runway_file=joinpath(pkgdir(PNPSolve), "data", "2307 A3 Reference Data_v2.xlsx")) =
-#     let df = XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
-#         df[df.ICAO .== runway_identifier, :]
-#     end
-# @deprecate get_unique_runways(runway_id) (load_runways() |> df->filter(:ICBQ => ==(runway_id)))
-
+"""Takes an angle given as 'bearing', i.e. with zero pointing north and positive direction clockwise,
+ and translates it to an ENU angle, i.e. with zero pointing east and positive direction counter-clockwise."""
 angle_to_ENU(θ::Angle) = let
     θ = -θ  # flip orientation
     θ = θ + 90°  # orient from x axis (east)
 end
+
 function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Angle) where T<:Length
     # Bearing is defined in degrees, clockwise, from north.
     # We want it in rad, counterclockwise (i.e. in accordance to z axis), from east (x axis).
@@ -65,17 +46,6 @@ function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Ang
     front_right = threshold + width/2 * [cos(bearing-90°); sin(bearing-90°); 0]
 
     return ENU{Meters}[front_left, front_right]  #, back_left, back_right]
-end
-
-function project_points(cam_pose::AffineMap{<:Rotation{3, Float64}, <:StaticVector{3, T}},
-                        points::Vector{ENU{T}}) where T<:Union{Length, Float64}
-    # projection expects z axis to point forward, so we rotate accordingly
-    focal_length = 25mm
-    pixel_size = 0.00345mm
-    scale = focal_length / pixel_size |> upreferred  # solve units, e.g. [mm] / [m]
-    cam_transform = cameramap(scale) ∘ inv(LinearMap(RotY(τ/4))) ∘ inv(cam_pose)
-    projected_points = map(Point2d ∘ cam_transform, points)
-    projected_points = (T <: Quantity ? projected_points .* 1pxl : projected_points)
 end
 
 function compute_thresholds_and_corners_in_ENU(
