@@ -6,7 +6,6 @@ using Optim
 using ReTest
 using Tau
 using Roots
-using LeastSquaresOptim
 using LsqFit
 using Unitful: Length
 using StaticArrays: StaticVector, MVector, SVector, MArray, FieldVector

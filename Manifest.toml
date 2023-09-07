@@ -2,7 +2,7 @@
 
 julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "e486bc78875ea95d17a48fbdea8f9b6acfb7d539"
+project_hash = "9e94a362e7d1e2ac6578329b91d9d21a7b1b5593"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -672,13 +672,12 @@ version = "1.1.0"
 
 [[deps.GeodesyXYZExt]]
 deps = ["Geodesy", "Rotations", "StaticArrays", "Tau"]
-path = "/Users/romeovalentin/Documents/GeodesyXYZExt/"
+git-tree-sha1 = "37bd405abfc1550c58fdacdee4702d2125379498"
+repo-rev = "main"
+repo-url = "git@github.com:airbus-wayfinder/GeodesyXYZExt.jl.git"
 uuid = "987ad435-e993-44fa-9c05-fce934ed82f8"
 version = "0.1.0"
 weakdeps = ["Unitful"]
-
-    [deps.GeodesyXYZExt.extensions]
-    GeodesyXYZExtUnitfulExt = "Unitful"
 
 [[deps.GeometryBasics]]
 deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
@@ -1100,7 +1099,10 @@ version = "0.13.0"
 
 [[deps.LsqPnP]]
 deps = ["ComponentArrays", "CoordinateTransformations", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "IntervalSets", "LeastSquaresOptim", "LinearAlgebra", "LsqFit", "Optim", "ReTest", "Roots", "Rotations", "RunwayLib", "StaticArrays", "StatsBase", "Tau", "Unitful"]
-path = "/Users/romeovalentin/Documents/PNPSolve/LsqPnP/"
+git-tree-sha1 = "f95379dede33ec6c0eee88f1e824f249f21268fb"
+repo-rev = "main"
+repo-subdir = "LsqPnP"
+repo-url = "git@github.com:airbus-wayfinder/PNPSolve.jl.git"
 uuid = "448f7bbe-c51f-47ba-87ef-d1481ee1c501"
 version = "0.1.0"
 
@@ -1640,7 +1642,10 @@ version = "0.2.1"
 
 [[deps.RunwayLib]]
 deps = ["CoordinateTransformations", "DataFrames", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Unitful", "XLSX"]
-path = "/Users/romeovalentin/Documents/PNPSolve/RunwayLib/"
+git-tree-sha1 = "bceb7d5f3c8a3978dc89a2e0e7df2d2ec5e3ca95"
+repo-rev = "main"
+repo-subdir = "RunwayLib"
+repo-url = "git@github.com:airbus-wayfinder/PNPSolve.jl.git"
 uuid = "21826f37-226f-4b4e-8327-0e174ca2fff2"
 version = "0.1.0"
 
