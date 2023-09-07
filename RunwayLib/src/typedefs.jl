@@ -8,7 +8,7 @@ struct ImgProj{T} <: FieldVector{2, T}
     x
     y
 end
-similar_type(::Type{A}, ::Type{T}, s::Size{S}) where {A<:ImgProj, T, S} = ImgProj{T}
+similar_type(::Type{<:ImgProj}, ::Type{T}, s::Size{S}) where {T, S} = ImgProj{T}
 
 "Function to produce a NamedTuple type.
 Similar to a struct, but call with () instead of {} for type param. Benefit: We can broadcast over `values(tpl)`.

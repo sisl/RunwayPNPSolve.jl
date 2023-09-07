@@ -174,7 +174,7 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
     meshscatter!(
         cam_view_ax,
         mapeach(projected_coords_to_plotting_coords, projected_points),
-        marker = Makie.Circle(Point2d(0, 0), 1.0),
+        marker = Makie.Circle(Point2(0., 0.), 1.0),
         markersize = σ,
     )
     # Compute and plot line estimates
@@ -231,13 +231,13 @@ lines!(scene, map(p -> ustrip.(m, p), runway_corners[[1, 2, 4, 3, 1]]))
 # arrows!(scene, [Point3f(C_t_true), ], [Vec3f([1., 0, 0]), ]; normalize=true, lengthscale=0.5)
 arrows!(
     scene,
-    fill(Point3d(0, 0, 0), 3),
+    fill(Point3{Float64}(0, 0, 0), 3),
     Vec3f[[1, 0, 0], [0, 1, 0], [0, 0, 1]] ./ 5;
     arrowsize = Vec3f(0.1, 0.1, 0.2),
 )
 arrows!(
     scene,  # larger coordinate system
-    fill(Point3d(0, -15, 0), 3),
+    fill(Point3{Float64}(0, -15, 0), 3),
     Vec3f[[1, 0, 0], [0, 1, 0], [0, 0, 1]] * 5;
     arrowsize = Vec3f(2, 2, 3),
 )

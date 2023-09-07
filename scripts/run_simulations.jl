@@ -19,7 +19,8 @@ function setup_runway!(; ICAO="KABQ", approach_idx=1)
     runways_df::DataFrame = let df = load_runways()
         filter(:ICAO => ==(ICAO), df)
     end
-    sort!(runways_df, Symbol("True Bearing"); by=x->x%180)  # pair up runway "forward" and "backward" direction
+    # pair up runway "forward" and "backward" direction
+    sort!(runways_df, Symbol("True Bearing"); by=x->x%180)
     # Rotate df rows such that approach_idx comes first. See https://stackoverflow.com/a/59436296.
     rot_indices = mod1.(first(axes(df)) .+ (approach_idx-1),
                         nrow(runways_df))
@@ -65,6 +66,7 @@ function make_alongtrack_distance_df(; N_measurements=1000,
     distances = (300.0:100:6000.0).*1m
     colnames = [:alongtrack_distance, :err_x, :err_y, :err_z]
 
+    # unpack only the corners
     (; corners) = setup_runway!(; kwargs...)
 
     function solve_sample(alongtrack_distance)
@@ -80,10 +82,12 @@ function make_alongtrack_distance_df(; N_measurements=1000,
         projection_fn = make_projection_fn(AffineMap(camera_rot, camera_pos))
         pixel_locs = projection_fn.(corners)
 
-        pnp(corners[feature_mask],
+        pos_estimate = pnp(
+            corners[feature_mask],
             (pixel_locs+sample_measurement_noise(length(corners), σ=σ_pxl))[feature_mask],
             camera_rot;
-            initial_guess = camera_pos + sample_pos_noise()).pos - camera_pos
+            initial_guess = camera_pos + sample_pos_noise()).pos
+        return pos_estimate - camera_pos
     end
 
     map_fn = (parallel ? ThreadsX.map : map)
@@ -98,8 +102,9 @@ function make_alongtrack_distance_df(; N_measurements=1000,
     return results
 end
 
+# requirements found in MPVS: https://docs.google.com/document/d/1W5QZ-fLEq-X_ftKTutadUVN_TLgp3MP7EX2913VAR9M/edit#heading=h.3ylonubdepc
 const alongtrack_reqs = (;
-    x = [-6_000, 0],
+    x = [-6000, 0],
     y = [370, 10])
 const height_reqs = (;
     x = [-6000, -4500, -1450, -860, -280],
@@ -111,11 +116,12 @@ const crosstrack_reqs = (;
 function plot_alongtrack_distance_errors(; features=(feature_mask=(1:2), feature_str="Near only"),
                                            N_measurements=100, draw_requirements=false,
                                            extra_fname="",
+                                           df=nothing,  # can either provide or recompute
                                            kwargs...)
     seed!(1)
     (;feature_mask, feature_str) = features
     fig = Figure()
-    df = make_alongtrack_distance_df(; N_measurements, feature_mask, kwargs...)
+    df = (isnothing(df) ? make_alongtrack_distance_df(; N_measurements, feature_mask, kwargs...) : df)
     df = stack(df, [:err_x, :err_y, :err_z];
                variable_name=:err_axis, value_name=:err_value)
     plt = data(df)
@@ -126,10 +132,9 @@ function plot_alongtrack_distance_errors(; features=(feature_mask=(1:2), feature
     # use `draw!` to avoid drawing legend
     draw!(fig, plt;
          facet=(; linkyaxes = :none),
-         axis=(yminorgridvisible=true, ygridvisible=true, yminorgridcolor=(:gray, 0.5), ygridcolor=(:black, 0.5),
-               xminorgridvisible=true, xgridvisible=true, xgridcolor=(:gray, 0.5),
-               yticks=Makie.LinearTicks(5),
-               ))
+         axis=(yminorgridcolor=(:gray, 0.5), ygridcolor=(:black, 0.5), xgridcolor=(:gray, 0.5),
+               yticks=Makie.LinearTicks(5))
+    )
     if draw_requirements
         for (row, data) in enumerate([alongtrack_reqs, crosstrack_reqs, height_reqs])
             lines!(fig[row, 1], data.x, data.y; color=:green)
@@ -137,12 +142,13 @@ function plot_alongtrack_distance_errors(; features=(feature_mask=(1:2), feature
         end
     end
 
+    # See https://github.com/MakieOrg/AlgebraOfGraphics.jl/issues/331#issuecomment-1654825941
     Label(fig[0, 1:1], "Estimation errors over alongtrack distance ($(feature_str))";
-            fontsize=16, font=:bold)
+          fontsize=16, font=:bold)
     resizetocontent!(fig)
 
     feature_str = let
-        lowercase(replace(feature_str, ' '=>'_'))
+        feature_str = lowercase(replace(feature_str, ' '=>'_'))
         if (:approach_idx in keys(kwargs))
             feature_str = string(feature_str, "_approach=$(kwargs[:approach_idx])")
         end
