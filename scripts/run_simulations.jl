@@ -83,8 +83,9 @@ function make_alongtrack_distance_df(; N_measurements=1000,
         pixel_locs = projection_fn.(corners)
 
         pos_estimate = pnp(
-            corners[feature_mask],
+            corners,
             (pixel_locs+sample_measurement_noise(length(corners), σ=σ_pxl))[feature_mask],
+            feature_mask,
             camera_rot;
             initial_guess = camera_pos + sample_pos_noise()).pos
         return pos_estimate - camera_pos

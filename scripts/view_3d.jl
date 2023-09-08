@@ -21,6 +21,7 @@ import Unitful: mm, rad
 using Geodesy
 using GeodesyXYZExt
 import Distributions: Chisq, MvNormal
+import ComponentArrays: ComponentVector
 
 # import Unitful: convert, Unit, Quantity
 # Unitful.convert(t::Type{Quantity{T, D, U}}, u::Unit) where {T, D, U} = Unitful.convert(t, convert(Number, u))
@@ -46,10 +47,10 @@ const Δx = 3500.0m
 const Δy = 61.0m
 
 runway_corners =
-    XYZ{Meters}[[0m, -Δy / 2, 0m], [0m, Δy / 2, 0m], [Δx, -Δy / 2, 0m], [Δx, Δy / 2, 0m]]
+    XYZ{Meters}[[0m, -Δy / 2, 0m], [0m, Δy / 2, 0m], [Δx, +Δy / 2, 0m], [Δx, -Δy / 2, 0m]]
 runway_corners_far = [
-    3 * (runway_corners[3] - runway_corners[1]) + runway_corners[1],
-    3 * (runway_corners[4] - runway_corners[2]) + runway_corners[2],
+    3 * (runway_corners[4] - runway_corners[1]) + runway_corners[1],
+    3 * (runway_corners[3] - runway_corners[2]) + runway_corners[2],
 ]
 
 R_t_true = RotY(0.0)
@@ -68,7 +69,7 @@ slidergrid = SliderGrid(
     ),
     (
         label = "Error scale [°]",
-        range = 0.0:0.25:5,
+        range = 0.0:0.25:10,
         startvalue = 0.5,
         format = x -> string(x, " degrees"),
     ),
@@ -81,13 +82,13 @@ Label(toggle_grid[1, 2], "Use feature");
 Label(toggle_grid[1, 3], "Add noise");
 use_x_toggle = Toggle(toggle_grid[5, 2]; active=true)
 use_y_toggle = Toggle(toggle_grid[5, 3]; active=true)
-use_xy = @lift [sym for (sym, active) in [:x=>$(use_x_toggle.active), :y=>$(use_y_toggle.active)] if active]
 # Set up noise toggles, scenario menu, num pose estimates
 feature_toggles_ = [Toggle(toggle_grid[1+i, 2]; active = true) for i = 1:3]
 noise_toggles_ = [Toggle(toggle_grid[1+i, 3]; active = true) for i = 1:3]
 toggle_labels = let labels = ["Near corners", "Far corners", "Edges", "Use x/y"]
     [Label(toggle_grid[1+i, 1], labels[i]) for i = 1:length(labels)]
 end
+
 ## Set up scenario, which affects cam position and therefore all the projections
 Label(toggle_grid[length(toggle_labels)+2, 1], "Scenario:")
 scenario_menu = Menu(
@@ -118,6 +119,9 @@ cam_pose_gt = @lift AffineMap(R_t_true, $C_t_true)
 "Allow `a, b = Observable((1, 2)) |> unzip_obs`"
 function unzip_obs(obs::Observable{<:Tuple})
     Tuple([@lift $obs[i] for i in eachindex(obs[])])
+end
+function unzip_obs(obs::Observable{<:NamedTuple})
+    (; [i=>(@lift $obs[i]) for i in eachindex(obs[])]...)
 end
 "Map function over each element in Observable, i.e. mapeach(x->2*x, Observable([1, 2, 3])) == Observable([2, 4, 6])"
 mapeach(f, obs::Observable{<:AbstractVector}) = map(el -> map(f, el), obs)
@@ -154,7 +158,7 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
     # projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
     # projected_points = @lift map($projective_transform, runway_corners)
     projected_points = @lift make_projection_fn($cam_pose).(runway_corners)
-    projected_points_rect = @lift $projected_points[[1, 2, 4, 3, 1]]
+    projected_points_rect = @lift $projected_points[[1, 2, 3, 4, 1]]
 
     lines!(cam_view_ax, @map(projected_coords_to_plotting_coords.(&projected_points_rect)))
     # lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, projected_points_rect))
@@ -178,7 +182,7 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
         markersize = σ,
     )
     # Compute and plot line estimates
-    ρ, θ = @lift(hough_transform($projected_points)) |> unzip_obs
+    (; ρ, θ) = @lift(hough_transform($projected_points)) |> unzip_obs
     # Notice the negative angle, due to the orientatin of the coord system.
     ρ_θ_line_lhs = lift(projected_points, ρ, θ) do ppts, ρ, θ
         p0 = (ppts[1] + ppts[2]) / 2
@@ -224,7 +228,7 @@ cam3d!(
 # inspector = DataInspector(scene)
 ## Draw runway and coordinate system
 # Normal runway rectangle
-lines!(scene, map(p -> ustrip.(m, p), runway_corners[[1, 2, 4, 3, 1]]))
+lines!(scene, map(p -> ustrip.(m, p), runway_corners[[1, 2, 3, 4, 1]]))
 # Draw 3d runway lines into the distance
 # lines!(scene, map(p->ustrip.(m, p), [runway_corners[1], runway_corners_far[1]]); color=:blue)
 # lines!(scene, map(p->ustrip.(m, p), [runway_corners[2], runway_corners_far[2]]); color=:blue)
@@ -271,6 +275,14 @@ feature_toggles = lift(
 ) do near, far, angle
     Bool[near, far, angle]
 end
+use_xy = @lift [sym
+                for (sym, active) in [:x=>$(use_x_toggle.active),
+                                      :y=>$(use_y_toggle.active),
+                                      # :β=>$(feature_toggles_[3].active),
+                                      :γ=>$(feature_toggles)[3],
+                                      ]
+                if active]
+on(use_xy, priority=1) do _; Consume(); end  # don't use this to update plot
 noise_toggles = lift(
     noise_toggles_[1].active,
     noise_toggles_[2].active,
@@ -307,12 +319,17 @@ perturbed_pose_estimates = lift(
     num_pose_est,
     corr_noise_toggle.active,
 ) do cam_pose_gt, σ, σ_angle, feature_toggles, use_xy, noise_toggles, num_pose_est, corr_noise
+    @debug "Call plotting update."
     projected_points::Vector{ImgProj{Pixels}} = make_projection_fn(cam_pose_gt).(runway_corners)
-    ρ, θ = hough_transform(ustrip.(projected_points))
+    angles = let
+        (; lhs, rhs) = hough_transform(projected_points[1:4])[:θ]
+        ComponentVector(γ=[lhs, rhs], β=[(rhs+(τ/4)rad)-(lhs-(τ/4)rad), ])
+    end
     # @show rad2deg.([θ[:lhs], θ[:rhs]])
     # @show rad2deg.(θ[:lhs] - θ[:rhs] - τ/2)
+    @assert ((:γ ∈ use_xy) && feature_toggles[3]) || !(:γ ∈ use_xy)
 
-    feature_mask = feature_toggles[[1, 1, 2, 2]]
+    corner_feature_mask = feature_toggles[[1, 1, 2, 2]]
     noise_mask = noise_toggles[[1, 1, 2, 2]]
     make_corr_matrix(dim, offdiag_val) = begin
         Σ = Matrix{Float64}(I(dim))
@@ -326,14 +343,17 @@ perturbed_pose_estimates = lift(
 
             noise_mask .* σ^2 .* Point2.(eachrow([rand(D) rand(D)])) .* 1pxl
         end
-    sample_angular_noise() = σ_angle * 1rad * randn()
-    sample_pos_noise() = 10 * randn(3) .* 1m
+    sample_angular_noise() = σ_angle * 1rad * randn(length(angles))
+    sample_pos_noise() = [100;100;50] .* randn(3) .* 1m
     sols = ThreadsX.collect(
+    # sols = collect(
         LsqPnP.pnp(
-            runway_corners[feature_mask],
-            (projected_points .+ sample_measurement_noise())[feature_mask],
+            runway_corners,
+            (projected_points .+ sample_measurement_noise())[corner_feature_mask],
+            corner_feature_mask,
             # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
+            angles=(feature_toggles[3] ? angles + sample_angular_noise() * noise_toggles[3] : ComponentVector(β=[], γ = [])),
             initial_guess = cam_pose_gt.translation + sample_pos_noise(),
             components=use_xy,
         ) for _ = 1:num_pose_est
