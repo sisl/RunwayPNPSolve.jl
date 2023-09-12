@@ -1,0 +1,515 @@
+#+title: Lab_notes
+
+
+* TODOs
+
+** DONE Implement error plots for x/y/z
+:PROPERTIES:
+:Effort:   0:30
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-05 Wed 15:51]--[2023-07-05 Wed 16:11] =>  0:20
+CLOCK: [2023-07-05 Wed 14:48]--[2023-07-05 Wed 15:40] =>  0:52
+:END:
+
+** DONE Find bug (?) why now pose estimates are sometimes under runway
+:PROPERTIES:
+:Effort:   0:15
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-05 Wed 16:21]--[2023-07-05 Wed 16:31] =>  0:10
+CLOCK: [2023-07-05 Wed 16:11]--[2023-07-05 Wed 16:12] =>  0:01
+:END:
+** TODO Implement Hough Transform and Estimation from lines
+*** DONE Visualize lines in 2d and 3d space
+:PROPERTIES:
+:Effort:   0:15
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-06 Thu 13:15]--[2023-07-06 Thu 13:43] =>  0:28
+:END:
+*** TODO Investigate math for Hough Transform
+:PROPERTIES:
+:Effort:   2h
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-06 Thu 13:43]--[2023-07-06 Thu 14:28] =>  0:45
+:END:
+*** DONE Baseline implementation
+:PROPERTIES:
+:Effort:   1.5h
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 14:13]--[2023-07-07 Fri 14:32] =>  0:19
+CLOCK: [2023-07-07 Fri 12:50]--[2023-07-07 Fri 13:10] =>  0:20
+CLOCK: [2023-07-07 Fri 10:21]--<2023-07-07 Fri 10:50> =>  0:29
+:END:
+**** DONE Fix bug with line vis / computation
+:PROPERTIES:
+:Effort:   1:00
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 14:49]--[2023-07-07 Fri 15:02] =>  0:13
+:END:
+Ended up having to use analytic formula and fix index messup
+**** DONE Fix second bug
+:PROPERTIES:
+:Effort:   0:30
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 15:03]--[2023-07-07 Fri 15:19] =>  0:16
+:END:
+Pose estimates are wrong when using hough transform information
+*** DONE Visualize Hough Transform
+:PROPERTIES:
+:Effort:   0:30
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 14:32]--[2023-07-07 Fri 14:48] =>  0:16
+:END:
+*** DONE Put some more toggles and maybe different noise bar
+:PROPERTIES:
+:Effort:   0:30
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 16:15]--[2023-07-07 Fri 17:05] =>  1:20
+:END:
+- [X] Probably simplify to three use/noise toggles
+  + front corners
+  + back corners
+  + lines
+- [X] Print result of optimization problem on click (using DataInspector)
+- [-] Maybe make extra noise slider
+- [X] When this is all done, probably merge into main.
+*** TODO [#A] Investigate optimization convergence problems and bad results with Lines
+:PROPERTIES:
+:Effort:   0:45
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-07 Fri 17:05]--[2023-07-07 Fri 17:35] =>  0:30
+:END:
+**** DONE Make debugging plot of optimization landscape
+:PROPERTIES:
+:Effort:   0:45
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 12:54]--[2023-07-10 Mon 13:42] =>  0:48
+CLOCK: [2023-07-10 Mon 10:40]--[2023-07-10 Mon 11:56] =>  1:16
+CLOCK: [2023-07-10 Mon 09:52]--[2023-07-10 Mon 10:02] =>  0:10
+:END:
+- maybe use volumeslices
+- or consider contourf, but can only plot f against 2 vars.
+
+**** DONE [#B] Implement perspective shift onto new camera position on click.
+***** DONE Refactor projection onto camera position
+:PROPERTIES:
+:Effort:   0:30
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 14:36]--[2023-07-10 Mon 14:38] =>  0:02
+CLOCK: [2023-07-10 Mon 13:51]--[2023-07-10 Mon 13:54] =>  0:03
+:END:
+***** DONE Refactor "coordiate transformations" using the package
+:PROPERTIES:
+:Effort:   0:15
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 14:38]--[2023-07-10 Mon 15:10] =>  0:32
+:END:
+***** DONE Just yield window as a result of a function that takes a position
+:PROPERTIES:
+:Effort:   0:20
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 15:10]--[2023-07-10 Mon 16:03] =>  0:53
+:END:
+***** DONE Make two windows, once which is the true position, and one which is the result of a click.
+:PROPERTIES:
+:Effort:   0:20
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 16:03]--[2023-07-10 Mon 16:14] =>  0:11
+:END:
+***** DONE +Make a toggle that switches between them. (optional)+
+:PROPERTIES:
+:Effort:   0:20
+:END:
+**** DONE [#A] Fix Hough transform bug in some situations.
+:PROPERTIES:
+:Effort:   0:40
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 17:02]--[2023-07-10 Mon 17:40] =>  0:38
+:END:
+**** TODO There's still another problem related to the optimization problem...
+:PROPERTIES:
+:Effort:   0:45
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-11 Tue 10:30]--[2023-07-11 Tue 10:52] =>  0:22
+:END:
+The problem is that there is a local minimum where $\rho$ has converged, but not $\theta$.
+What can we do?
+- regularize someohow
+- unweigh rho
+**** DONE Refactor a bit
+:PROPERTIES:
+:Effort:   0:35
+:END:
+:LOGBOOK:
+CLOCK: [2023-07-10 Mon 16:18]--[2023-07-10 Mon 17:02] =>  0:44
+:END:
+
+** TODO [#A] Fix calibration
+*** TODO Understand focal length
+:PROPERTIES:
+:Effort:   0:25
+:END:
+*** TODO Understand image width and height
+:PROPERTIES:
+:Effort:
+:END:
+*** TODO Understand error in pixels
+:PROPERTIES:
+:Effort:   0:15
+:END:
+*** TODO Write plots in pixels and meters
+:PROPERTIES:
+:Effort:   0:10
+:END:
+** TODO [#C] Make this into a package
+:PROPERTIES:
+:Effort:   0:25
+:END:
+
+
+
+* Sensitivity analysis
+- did error on length
+- did error on width
+- manually did error on pixel pos
+
+
+* Variations:
+** Alongtrack distance
+- One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
+[[file:./figs/distance_variation_1:2_approach=6.png]]
+[[file:./figs/distance_variation_1:4_approach=6.png]]
+
+- However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
+However, there is a clear performance drop once they go out of sight.
+
+[[file:figs/distance_variation_:_approach=4.png]]
+
+
+- The error is approximately linear with the pixel error. I.e. here's the last image, but with \(\sigma = 2\mathrm{pxl}\).
+[[file:figs/distance_variation_:_approach=4_2pxl.png]]
+
+** Rotation
+We only report \(1\sigma\). Recall you can approximately say
+- 68% fall in \([-\sigma, \sigma]\),
+- 90% fall in \([-1.5\sigma, 1.5\sigma]\), and
+- 99% \([-2.5\sigma, 2.5\sigma]\).
+
+*** Features 1:2
+**** raw
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.16814  -0.00283   0.0337371
+ 153.379     0.581112  3.26735
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.21947  0.0660953  -0.0285781
+ 151.425    3.4841      3.74225
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.5514   0.0548323   0.264447
+ 199.26    27.3165     14.0665
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -14.7415   0.364262   0.519558
+ 193.49    45.6259    22.877
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -9.21481   0.196593   0.484496
+ 217.494    56.7308    28.9801
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.4776   0.59367   0.808493
+ 211.487   66.3532   33.2873
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.9262  -0.565817  -0.535161
+ 205.019   70.5194    34.7356
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.3143   0.483048   1.00353
+ 181.907   75.8419    37.4242
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.1313  -2.99233   0.620182
+ 206.601   79.315    38.6841
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -5.26704   0.0479666   0.488847
+ 173.934    81.2017     40.707
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -10.9768  -1.02146  -0.351597
+ 169.441   81.738    41.6722
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.00435  -0.835736   0.265345
+ 157.637    84.242     41.5165
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.77991   0.841156   0.686087
+ 169.155    85.6169    42.5281
+**** formatted
+:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12       13
+:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
+: ─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+:    1 │ σ_angle   0.0°      5.0°     10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
+:    2 │ σ_x       153.379   151.425  199.26   193.49   217.494  211.487  205.019  181.907  206.601  173.934  169.441  157.637  169.155
+:    3 │ σ_y       0.581112  3.4841   27.3165  45.6259  56.7308  66.3532  70.5194  75.8419  79.315   81.2017  81.738   84.242   85.6169
+:    4 │ σ_z       3.26735   3.74225  14.0665  22.877   28.9801  33.2873  34.7356  37.4242  38.6841  40.707   41.6722  41.5165  42.5281
+*** Features 1:4
+**** raw
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.19696  0.0075285  0.0502635
+ 100.454    0.495195   1.94139
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+   0.261094  0.0647815  0.0592448
+ 100.388     4.87517    3.37197
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.82626   0.564647  -0.155263
+ 111.925    27.8923    13.9433
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.194517  -0.244625  -0.0906993
+ 138.364     44.957     22.912
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.58071   0.0682961   0.0576568
+ 117.993    56.7076     27.9676
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.904429   0.698025   0.226501
+ 124.327     66.6036    32.681
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.62445   2.03755  -0.76615
+ 147.533    70.5756   35.8625
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.98871   0.558398   0.226711
+ 123.186    74.8716    37.5796
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.8241   0.0663825  -0.092881
+ 132.455   78.4469     39.1741
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.41516  -0.150595   0.0492371
+ 131.658    80.4602    40.1788
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.74761  -2.078    0.314863
+ 143.56     83.4171  41.075
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.03709   0.833214   0.00498697
+ 143.201    83.3268    41.8895
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.57759  -1.05411  -0.455763
+ 126.379    83.2375   43.2943
+**** formatted
+:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12       13
+:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
+: ─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+:    1 │ σ_angle   0.0°      5.0°     10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
+:    2 │ σ_x       100.454   100.388  111.925  138.364  117.993  124.327  147.533  123.186  132.455  131.658  143.56   143.201  126.379
+:    3 │ σ_y       0.495195  4.87517  27.8923  44.957   56.7076  66.6036  70.5756  74.8716  78.4469  80.4602  83.4171  83.3268  83.2375
+:    4 │ σ_z       1.94139   3.37197  13.9433  22.912   27.9676  32.681   35.8625  37.5796  39.1741  40.1788  41.075   41.8895  43.2943
+*** Features (:)
+**** raw
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ 0.028292  0.0030881  -0.00489142
+ 3.62234   0.319877    0.327784
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.0420827  -0.00742929  0.00329768
+  3.95995     0.335672    0.339709
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.671178  -0.0376517  0.113909
+ 15.419      4.64131    1.24272
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.388351   0.412988   0.215115
+ 43.1642    32.248     14.2915
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.26043  -0.857926   0.145583
+ 62.2505   46.7632    21.1139
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  1.57955   0.704326   0.137833
+ 71.9703   55.6119    27.2698
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  2.89698  -0.613564   0.0935092
+ 77.0481   63.6783    29.8971
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.0893006  -0.364597   0.558895
+ 89.7247     68.6814    31.3763
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.500785  -1.02141  -0.837706
+ 81.3209    71.6772   35.4608
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -1.72685  -1.02941  -0.971258
+ 86.6457   74.7806   36.6963
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  3.38091  -2.73956   0.301559
+ 87.389    78.7439   37.4007
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.015958   0.998094  -0.145212
+ 91.1766    78.1907    38.3517
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.421176   0.171872   0.493875
+ 85.9156    80.2746    39.7789
+**** formatted
+:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12
+:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
+: ─────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+:    1 │ σ_angle   0.0°      10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
+:    2 │ σ_x       3.62234   15.419   43.1642  62.2505  71.9703  77.0481  89.7247  81.3209  86.6457  87.389   91.1766  85.9156
+:    3 │ σ_y       0.319877  4.64131  32.248   46.7632  55.6119  63.6783  68.6814  71.6772  74.7806  78.7439  78.1907  80.2746
+:    4 │ σ_z       0.327784  1.24272  14.2915  21.1139  27.2698  29.8971  31.3763  35.4608  36.6963  37.4007  38.3517  39.7789
+
+** +Near / Near&Far / All+
+** Different Runways
+- data is stored in [[file:min_max_errors_results_(:)][here]] and [[file:min_max_errors_results_(1:2)][here]].
+*** Some errors
+**** x, 1:2
+: [ 50.0, 100.0) ┤▏ 3
+: [100.0, 150.0) ┤█████▌ 254
+: [150.0, 200.0) ┤█████████████████████████████████  1 527
+: [200.0, 250.0) ┤███▎ 147
+: [250.0, 300.0) ┤▌ 22
+: [300.0, 350.0) ┤▊ 38
+: [350.0, 400.0) ┤▍ 17
+: [400.0, 450.0) ┤▎ 4
+**** y, 1:2
+: [0.56, 0.57) ┤▉ 19
+: [0.57, 0.58) ┤███████▏ 144
+: [0.58, 0.59) ┤██████████████████████▉ 467
+: [0.59, 0.6 ) ┤███████████████████████████████████  713
+: [0.6 , 0.61) ┤███████████████████████▊ 487
+: [0.61, 0.62) ┤███████▋ 155
+: [0.62, 0.63) ┤█▍ 26
+: [0.63, 0.64) ┤▎ 2
+**** z, 1:2
+: [ 0.0,  2.0) ┤▏ 1
+: [ 2.0,  4.0) ┤█████████████████████████████████  1 772
+: [ 4.0,  6.0) ┤██▉ 160
+: [ 6.0,  8.0) ┤█▎ 67
+: [ 8.0, 10.0) ┤▎ 12
+**** x, (:)
+: [  0.0, 100.0) ┤▏ 2
+: [100.0, 200.0) ┤█████████████████████████████████  1 782
+: [200.0, 300.0) ┤███▎ 167
+: [300.0, 400.0) ┤█▏ 58
+: [400.0, 500.0) ┤▏ 3
+**** y, (:)
+: [0.56, 0.57) ┤▋ 15
+: [0.57, 0.58) ┤██████▋ 136
+: [0.58, 0.59) ┤██████████████████████▎ 456
+: [0.59, 0.6 ) ┤███████████████████████████████████  721
+: [0.6 , 0.61) ┤███████████████████████▎ 477
+: [0.61, 0.62) ┤████████▌ 174
+: [0.62, 0.63) ┤█▌ 31
+: [0.63, 0.64) ┤▎ 2
+: [0.64, 0.65) ┤▏ 1
+**** z, (:)
+: [ 0.0,  2.0) ┤▏ 1
+: [ 2.0,  4.0) ┤█████████████████████████████████  1 772
+: [ 4.0,  6.0) ┤██▉ 160
+: [ 6.0,  8.0) ┤█▎ 66
+: [ 8.0, 10.0) ┤▎ 13
+*** Reproduce
+- gen data with
+: using PNPSolve; include("scripts/run_simulations.jl")
+: rank_all_runways(; features=(; feature_mask=(:), feature_string="(:)"))
+: rank_all_runways(; features=(; feature_mask=(1:2), feature_string="(1:2)"))
+- extract with
+: (; min_errs, max_errs) = deserialize("min_max_errors_results_(1:2)")
+: sort(max_errs; by=k->max_errs[k][1])
+** Height
+
+** Noise magnitude scaling
+We find that all the errors scale approximately linearly with the noise magnitude.
+We always compute with \(\sigma = 1\mathrm{pxl}\), i.e. the location error in pixel space is approximately distributed as a standard Gaussian.
+** Show the influence of correlated noise
+Correlated noise, i.e. xs mutually correlated, ys correlated, but not xs/ys, increases crosstrack error, but reduces alongtrack error.
+|            | uncorr                          | corr                             |
+|------------+---------------------------------+----------------------------------|
+| near       | 150.71      0.572099    3.20166 | 48.1638    0.775874      1.26115 |
+| near & far | 100.012     0.473875    1.91374 | 40.031     0.884868     1.47759  |
+| all        | 3.53992    0.314093    0.320806 | 1.28715     1.01552      1.03104 |
+
+We don't make statements about using other runway measurements, because we don't know the correlation patterns there.
+*** Near
+
+
+** Show the impact of using angular measurements with some error.
