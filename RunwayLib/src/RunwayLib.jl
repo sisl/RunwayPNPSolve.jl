@@ -8,7 +8,7 @@ import StaticArraysCore: similar_type, Size
 using GeometryBasics
 using GeodesyXYZExt
 using Unitful, Unitful.DefaultSymbols
-import Unitful: Units, ustrip, register
+import Unitful: Units, ustrip, register, promote_unit, unit
 using GeometryBasics
 import LinearAlgebra: UniformScaling
 include("typedefs.jl")

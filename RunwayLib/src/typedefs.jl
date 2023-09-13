@@ -3,6 +3,11 @@ Meters = typeof(1.0m)
 @unit pxl "pxl" Pixel 0.00345mm false
 Pixels = typeof(1.0pxl)
 
+AngularUnits = Union{typeof(unit(1.0°)), typeof(unit(1.0rad))};
+# without this there's a bug when adding different angular units...
+Unitful.promote_unit(lhs::T, rhs::S) where {T<:AngularUnits, S<:AngularUnits} = rad
+
+
 " x points up, y points left "
 struct ImgProj{T} <: FieldVector{2, T}
     x
