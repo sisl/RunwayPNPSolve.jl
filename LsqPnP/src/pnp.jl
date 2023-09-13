@@ -18,6 +18,8 @@ unflatten_points(P::Type{<:StaticVector}, pts::AbstractVector{<:Number}) = P.(ea
 in_camera_img(p::ImgProj{Pixels}) = all(p .∈ [(-3000÷2*1pxl) .. (3000÷2*1pxl);
                                               (-4096÷2*1pxl) .. (4096÷2*1pxl)])
 
+expand_angles(vec::ComponentVector) = ComponentVector(NamedTuple(k=>[sin.(vec[k]); cos.(vec[k])] for k in keys(vec)))
+
 # We need to overload DiffResults to support mutable static arrays, see https://github.com/JuliaDiff/DiffResults.jl/issues/25
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)
 DiffResult(value::Union{Number, AbstractArray}, derivs::Tuple{Vararg{MVector}}) = MutableDiffResult(value, derivs)
@@ -40,7 +42,7 @@ function pnp(world_pts::Vector{XYZ{Meters}},
     end
     @assert length(pixel_locations) == N_mask
     # early exit if no points given
-    (length(pixel_locations) + length(angles) == 0) && return PNP3Sol((pos=initial_guess, ))
+    (length(pixel_locations) + length(angles) == 0) && return PNP3Sol((pos=initial_guess, converged=false,))
 
     in_camera_img_mask = in_camera_img.(pixel_locations)
     # world_pts = world_pts[in_camera_img_mask]
@@ -57,7 +59,9 @@ function pnp(world_pts::Vector{XYZ{Meters}},
 
         res = let
             pix = ustrip.(pxl, flatten_points(projected_points_given_pos[pixel_feature_mask][in_camera_img_mask]))
-            ang = ustrip.(rad, angles_given_pos)
+            # @assert eltype(angles_given_pos) <: Angle
+            ang = ustrip.(°, angles_given_pos)
+            ang = expand_angles(ang)
             vcat(pix, ang)[components]
         end |> collect
     end
@@ -65,25 +69,31 @@ function pnp(world_pts::Vector{XYZ{Meters}},
     xs = ustrip.(m, flatten_points(world_pts))
     ys = let
         pix = ustrip.(pxl, flatten_points(pixel_locations))
-        ang = ustrip.(rad, angles)
+        @assert eltype(angles) <: Angle "$angles"
+        ang = ustrip.(°, angles)
+        ang = expand_angles(ang)
         vcat(pix, ang)[components]
     end |> collect
     init = ustrip.(MVector(initial_guess))
     fit = try
         curve_fit(model, xs, ys, init;
                   autodiff=:forward)
-    catch
-        @warn components
-        @warn angles
-        @warn ys
-        @warn in_camera_img_mask
+    catch e
+        # @warn components
+        # @warn angles
+        # @warn ys
+        # @warn in_camera_img_mask
+        @warn e
+        @warn "Failed to converge"
+        return PNP3Sol((pos=initial_guess, converged=false,))
     end
-    return PNP3Sol((pos=XYZ(fit.param)*1m,))
+    return PNP3Sol((pos=XYZ(fit.param)*1m, converged=true))
 end
 
 
 PNP3Sol = @NamedTuple begin
   pos::XYZ{Meters}
+  converged::Bool
 end
 Optim.minimizer(sol::PNP3Sol) = sol.pos
 Optim.converged(sol::PNP3Sol) = true
