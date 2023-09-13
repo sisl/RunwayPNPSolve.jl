@@ -1,4 +1,5 @@
 #+title: Lab_notes
+#+latex_header: \usepackage{siunitx}
 
 
 * TODOs
@@ -194,6 +195,7 @@ CLOCK: [2023-07-10 Mon 16:18]--[2023-07-10 Mon 17:02] =>  0:44
 ** Alongtrack distance
 - One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
 [[file:./figs/distance_variation_1:2_approach=6.png]]
+** Adding more features
 [[file:./figs/distance_variation_1:4_approach=6.png]]
 
 - However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
@@ -201,18 +203,61 @@ However, there is a clear performance drop once they go out of sight.
 
 [[file:figs/distance_variation_:_approach=4.png]]
 
-
+*** Linear error :noexport:
 - The error is approximately linear with the pixel error. I.e. here's the last image, but with \(\sigma = 2\mathrm{pxl}\).
 [[file:figs/distance_variation_:_approach=4_2pxl.png]]
 
 ** Rotation
+/Reproduce:/
+: julia> let feature_mask=(1:2),
+:            σ_rot=1.0°
+:          df = make_alongtrack_distance_df(; feature_mask, σ_rot, sample_rotations=true,
+:                                             N_measurements=1000, distances=(6000:6000).*1m)
+:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
+:        end
+
 We only report \(1\sigma\). Recall you can approximately say
 - 68% fall in \([-\sigma, \sigma]\),
 - 90% fall in \([-1.5\sigma, 1.5\sigma]\), and
 - 99% \([-2.5\sigma, 2.5\sigma]\).
 
-*** Features 1:2
-**** raw
+Next, we explore if the results also hold when we're not facing the runway straight on.
+Note that we still assume that we know the precise aircraft orientation/attitude, but we now sample that attitude as follows:
+We start with a straight heading (as before).
+Then, we sample a random vector in the Unit sphere, and sample an angle from a zero-mean Gaussian with a given standard deviation.
+The orientation is then rotated around the sampled vector by the sampled orientation.
+#+caption: Features: (1:2)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 153.3 | 151.4 | 199.2 | 193.4 | 217.4 | 211.4 | 205.0 | 181.9 | 206.6 | 173.9 |
+ | \sigma_y     | 0.581 | 3.484 | 27.31 | 45.62 | 56.73 | 66.35 | 70.51 | 75.84 | 79.31 | 81.20 |
+ | \sigma_z     | 3.267 | 3.742 | 14.06 | 22.87 | 28.98 | 33.28 | 34.73 | 37.42 | 38.68 | 40.70 |
+#+end_table
+
+#+caption: Features: (1:4)
+#+begin_table
+#+latex: \centering
+| \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+|--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+| \sigma_x     | 100.4 | 100.3 | 111.9 | 138.3 | 117.9 | 124.3 | 147.5 | 123.1 | 132.4 | 131.6 |
+| \sigma_y     | 0.495 | 4.875 | 27.89 | 44.95 | 56.70 | 66.60 | 70.57 | 74.87 | 78.44 | 80.46 |
+| \sigma_z     | 1.941 | 3.371 | 13.94 | 22.91 | 27.96 | 32.68 | 35.86 | 37.57 | 39.17 | 40.17 |
+#+end_table
+
+#+caption: Features: (all)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 3.622 | 4.034 | 15.41 | 43.16 | 62.25 | 71.97 | 77.04 | 89.72 | 81.32 | 86.64 |
+ | \sigma_y     | 0.319 | 0.350 | 4.641 | 32.24 | 46.76 | 55.61 | 63.67 | 68.68 | 71.67 | 74.78 |
+ | \sigma_z     | 0.327 | 0.333 | 1.242 | 14.29 | 21.11 | 27.26 | 29.89 | 31.37 | 35.46 | 36.69 |
+#+end_table
+
+*** data :noexport:
+**** Features 1:2
+***** formatted
+***** raw :noexport:
 [ Info: 0.0°
 [ Info: [mean ; std] for x,y,z:
 2×3 Matrix{Float64}:
@@ -278,16 +323,9 @@ We only report \(1\sigma\). Recall you can approximately say
 2×3 Matrix{Float64}:
   -6.77991   0.841156   0.686087
  169.155    85.6169    42.5281
-**** formatted
-:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12       13
-:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
-: ─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-:    1 │ σ_angle   0.0°      5.0°     10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
-:    2 │ σ_x       153.379   151.425  199.26   193.49   217.494  211.487  205.019  181.907  206.601  173.934  169.441  157.637  169.155
-:    3 │ σ_y       0.581112  3.4841   27.3165  45.6259  56.7308  66.3532  70.5194  75.8419  79.315   81.2017  81.738   84.242   85.6169
-:    4 │ σ_z       3.26735   3.74225  14.0665  22.877   28.9801  33.2873  34.7356  37.4242  38.6841  40.707   41.6722  41.5165  42.5281
-*** Features 1:4
-**** raw
+**** Features 1:4
+***** formatted
+***** raw :noexport:
 [ Info: 0.0°
 [ Info: [mean ; std] for x,y,z:
 2×3 Matrix{Float64}:
@@ -353,16 +391,10 @@ We only report \(1\sigma\). Recall you can approximately say
 2×3 Matrix{Float64}:
   -3.57759  -1.05411  -0.455763
  126.379    83.2375   43.2943
-**** formatted
-:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12       13
-:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
-: ─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-:    1 │ σ_angle   0.0°      5.0°     10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
-:    2 │ σ_x       100.454   100.388  111.925  138.364  117.993  124.327  147.533  123.186  132.455  131.658  143.56   143.201  126.379
-:    3 │ σ_y       0.495195  4.87517  27.8923  44.957   56.7076  66.6036  70.5756  74.8716  78.4469  80.4602  83.4171  83.3268  83.2375
-:    4 │ σ_z       1.94139   3.37197  13.9433  22.912   27.9676  32.681   35.8625  37.5796  39.1741  40.1788  41.075   41.8895  43.2943
-*** Features (:)
-**** raw
+**** Features (:)
+***** formatted
+
+***** raw :noexport:
 [ Info: 0.0°
 [ Info: [mean ; std] for x,y,z:
 2×3 Matrix{Float64}:
@@ -428,19 +460,10 @@ We only report \(1\sigma\). Recall you can approximately say
 2×3 Matrix{Float64}:
   0.421176   0.171872   0.493875
  85.9156    80.2746    39.7789
-**** formatted
-:  Row │ variable  1         2        3        4        5        6        7        8        9        10       11       12
-:      │ String    Any       Any      Any      Any      Any      Any      Any      Any      Any      Any      Any      Any
-: ─────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-:    1 │ σ_angle   0.0°      10.0°    15.0°    20.0°    25.0°    30.0°    35.0°    40.0°    45.0°    50.0°    55.0°    60.0°
-:    2 │ σ_x       3.62234   15.419   43.1642  62.2505  71.9703  77.0481  89.7247  81.3209  86.6457  87.389   91.1766  85.9156
-:    3 │ σ_y       0.319877  4.64131  32.248   46.7632  55.6119  63.6783  68.6814  71.6772  74.7806  78.7439  78.1907  80.2746
-:    4 │ σ_z       0.327784  1.24272  14.2915  21.1139  27.2698  29.8971  31.3763  35.4608  36.6963  37.4007  38.3517  39.7789
-
 ** +Near / Near&Far / All+
 ** Different Runways
 - data is stored in [[file:min_max_errors_results_(:)][here]] and [[file:min_max_errors_results_(1:2)][here]].
-*** Some errors
+*** Some errors :noexport:
 **** x, 1:2
 : [ 50.0, 100.0) ┤▏ 3
 : [100.0, 150.0) ┤█████▌ 254
@@ -502,14 +525,196 @@ We find that all the errors scale approximately linearly with the noise magnitud
 We always compute with \(\sigma = 1\mathrm{pxl}\), i.e. the location error in pixel space is approximately distributed as a standard Gaussian.
 ** Show the influence of correlated noise
 Correlated noise, i.e. xs mutually correlated, ys correlated, but not xs/ys, increases crosstrack error, but reduces alongtrack error.
-|            | uncorr                          | corr                             |
-|------------+---------------------------------+----------------------------------|
-| near       | 150.71      0.572099    3.20166 | 48.1638    0.775874      1.26115 |
-| near & far | 100.012     0.473875    1.91374 | 40.031     0.884868     1.47759  |
-| all        | 3.53992    0.314093    0.320806 | 1.28715     1.01552      1.03104 |
+|            |   | uncorr |        |        |   |   corr |        |        |
+|            |   |      x |      y |      z |   |      x |      y |      z |
+|------------+---+--------+--------+--------+---+--------+--------+--------|
+| near       |   | 150.71 | 0.5720 | 3.2016 |   | 48.163 | 0.7758 | 1.2611 |
+| near & far |   | 100.01 | 0.4738 | 1.9137 |   | 40.031 | 0.8848 | 1.4775 |
+| all        |   | 3.5399 | 0.3140 | 0.3208 |   | 1.2871 | 1.0155 | 1.0310 |
 
 We don't make statements about using other runway measurements, because we don't know the correlation patterns there.
 *** Near
 
 
 ** Show the impact of using angular measurements with some error.
+*** (1:2)
+No noise:
+: 149.8787156111555
+:   0.5832269893203661
+:   3.162242097807416
+With noise:
+: 148.68609231550772
+:  66.55432806506772
+:  60.33363881208062
+
+*** (:)
+No noise:
+: 3.838621143108616
+: 0.3269586694016983
+: 0.32742992303926616
+With noise
+: 60.84696311184394
+: 84.13550220758722
+: 83.17166785071895
+*** Conclusions
+We can see that using more runway features does not "protect" us from suffering massive prediction errors in y- and z-direction.
+Interestingly, the x-direction barely changes.
+
+
+* Other report: [[file:~/Documents/SensitivityReport/sensitivity-report.org]]
+* Report overview
+- we currently only observe front two corners.
+- what's the real error distribution in x/y? are the errors correlated?
+- how do errors in x/y influence our pose estimate?
+- how does it change with alongtrack distance? height? crosstrack error?
+- how do error correlations influence our pose estimate?
+- how do errors in rotation influence our pose estimate?
+- can we improve by taking four corners?
+- can we improve by taking edge angles?
+- can we improve by considering other runways?
+
+** Simulation
+- we retrieve real runway data from a database (=2307 A3 Reference Data_v2.xlsx=).
+- our default case will be KABQ, [-6000m, 0m, 1.2\degree]
+- we solve the problem similar to how opencv solves it: given known 3D datapoints, and assuming a pose, we project the 3D datapoints onto the screen and compare with the actual measurements.
+- then we use an optimization method to minimize the squared sum of errors in x and y direcetion (screen coordinates).
+- specifically, we use the Levenberg-Marquardt algorithm (same as OpenCV) provided by LsqFit.jl.
+  We also tried other algorithms, but generally observed worse performance, specifically when other measurements like angles are also taken into account.
+
+- Using this simulation allowed us to simulate different error distributions, airplane positions and orientations, and runway setups and approaches.
+- There also has been some work on processing uncertainty estimates, although this will not be included in this report.
+** Empirical results
+*** Measurement Error Distribution and Correlations
+/The results in this section may be reproduced by the notebook located at https://github.com/airbus-wayfinder/PNPSolve.jl/blob/main/notebooks/error_distribution.jl
+using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_with_manual_Q3_pre_release.csv=./
+
+- Distribution full service volume (1332 samples)
+[[file:figs/error_distribution_in_service_volume.pdf]]
+- Distribution extreme service volume (105 samples)
+[[file:figs/error_distribution_in_extreme_service_volume.pdf]]
+
+**** Interude: Normal or Cauchy? :noexport:
+[[file:figs/normal_vs_cauchy.pdf]]
+- \(\mathcal{N}\left(\mu==-0.58, \sigma=1.14\right)\)
+- \(\mathit{Cauchy}\left(\mu=-0.67, σ=0.78\right)\)
+
+**** Correlations
+We can also wonder if the errors are correlated. For example, when we are predicting the near left corner too far to the right, do we also predict the far left corner too far to the right?
+What about relations between left-right and up-down?
+In [[fig:error-correlations]] we see that there is indeed a strong correlation between all for corners, such that all x predictions are correlated, and all y predictions are correlated; however x and y do not seem to be correlated.
+
+#+name: fig:error-correlations
+file:figs/error_correlations.pdf
+
+#+name: fig:error-correlations-extreme
+file:figs/error_correlations_extreme.pdf
+
+Inspecting the
+**** Conclusion
+For the further studies, we will proceed with the assumption that errors are sampled from a zero-mean Gaussian with one pixel of standard deviation, which seems approximately justified.
+In general we will consider the uncorrelated case (although somewhat misspecified given the above results), however we will also briefly consider the correlated case.
+
+We do note, however, that a Gaussian distribution may underestimate the "heavy tails".
+In other words, the following results may be overly optimistic.
+
+*** Simulation study
+**** We study the effects of consdering the following perturbations and features:
+- near corners, near&far corners, corners from other runways
+- sideline angles
+- non-straight approach attitude
+- error in attitude estimation
+- consistency across different runways (KABQ, KSFO, ...)
+
+**** Baseline setup:
+- Our default case will be the runway KABQ (Albuquerque), positioned at an alongtrack distance of (negative) \(\qty{6000}{\meter}\), horizontally centered (i.e. no crosstrack error), and with a vertical angle of \(\qty{1.2}{\degree}\).
+  Note that the crosstrack and height values are chosen such that they lie on the extreme of the service boundary.
+
+- Estimation using near two corners, equal weighting in x/y direction.
+- Measurement errors are sampled by adding zero-mean Gaussian noise with one pixel of standard deviation.
+  (This is roughly consistent with the real error distribution in decent conditions, see [[sec:realmeasurementerrors]].)
+- We start with an initial guess that is set to the true location plus three samples from a zero-mean Gaussian with 50 meters of standard deviation.[fn:1]
+**** Error distribution for different alongtrack distances.
+We start by investigating the error distribution of the pose estimate resulting from randomly sampled measurement noise, and evaluated at different alongtrack distances.
+
+- [[fig:distance-variation-1-2]] shows the resulting error distributions (median, 25th and 75th percentile, approximate 99th percentile)
+  for different alongtrack distances given the baseline setup described aboove.
+- Note that we additionally report the error requirements specifified in the MPVS.
+- Instructions for reproducing the figures are given in [[sec:reproducing-barplots]].
+
+#+attr_org: :width 300px
+#+name: fig:distance-variation-1-2
+[[file:./figs/distance_variation_1:2_approach=1_.png]]
+
+- We can observe that the y (crosstrack) and z (height) directions are indeed well within spec, and will likely still easily be in spec even given significantly larger pixel errors.
+
+  However, the x (alongtrack) direction does not have such a large margin for error, although the requirements are just about satisfied at the current level.
+
+- One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
+
+We also measure the estimation errors for larger measurement noise values, and find that for this setup, the estimation errors reliably scale with the magnitude of the estimation errors.
+
+- Next, we consider all four corners at the same time, and see if this improves our results ([[fig:distance-variation-1-4]])
+#+name: fig:distance-variation-1-4
+#+attr_org: :width 300px
+[[file:./figs/distance_variation_1:4_approach=1_.png]]
+Indeed, we see some improvement over just using the front corners; approximately a 25% reduction.
+
+- At this point, we note that the results ultimately rely on the specifics of the runway; in particular the runway with, and possibly the runway length.
+  For reference, the runway considered is approximately \(\qty{3000}{\meter}\) long and \(\qty{65}{\meter}\) wide.
+
+However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
+To illustrate, consider [[fig:distance-variation-all-approach-1]] and [[fig:distance-variation-all-approach-4]].
+We first notice that the alongtrack position estimate is massively improved over previous approaches.
+However, there is a clear performance drop once they go out of sight.
+
+#+name: fig:distance-variation-all-approach-1
+#+caption:
+#+attr_org: :width 300px
+[[file:figs/distance_variation_all_approach=1_.png]]
+#+name: fig:distance-variation-all-approach-4
+#+attr_org: :width 300px
+[[file:figs/distance_variation_all_approach=4_.png]]
+
+
+- The error is approximately linear with the pixel error. I.e. here's the last image, but with \(\sigma = 2\mathrm{pxl}\).
+[[file:figs/distance_variation_:_approach=4_2pxl.png]]
+**** Including angular measurements
+In the previous section we have seen the effect of including different pixel features, i.e. runway corners from the approaching or other runways.
+
+Now also consider adding additional information: the left and right sidelines angles of the approaching runway.
+
+| σ_angle |   0.0° |  0.01° |   0.1° |   0.3° |   0.5° |   1.0° | no angles |
+|---------+--------+--------+--------+--------+--------+--------+-----------|
+| σ_x     | 101.22 | 104.61 | 105.89 | 110.58 | 122.37 | 159.51 |    156.54 |
+| σ_y     | 0.3863 | 0.3967 | 0.3986 | 0.4267 | 0.4869 | 0.5968 |    0.5678 |
+| σ_z     | 2.1189 | 2.1929 | 2.2021 | 2.3073 | 2.5945 | 3.4132 |    3.3251 |
+** Real measurement errors  <<sec:realmeasurementerrors>>
+
+* Appendix
+** Correlations
+Correlation values (in service volume):
+\[\mathit{corr}(\begin{bmatrix}x \\ y \end{bmatrix}, \begin{bmatrix}x \\ y \end{bmatrix}) =
+% \frac{\mathit{cov}(\begin{bmatrix}x \\ y \end{bmatrix}, \begin{bmatrix}x \\ y \end{bmatrix})}{\sigma^2} =
+\left[\begin{array}{cccc|cccc}
+  1.0 &  0.92 &  0.98 &  0.93 & -0.05 & -0.05 & -0.04 & -0.04  \\
+  0.92 &  1.0 &  0.91 &  0.95 & -0.18 & -0.19 & -0.18 & -0.19 \\
+  0.98 &  0.91 &  1.0 &  0.93 & -0.04 & -0.05 & -0.03 & -0.03 \\
+  0.93 &  0.95 &  0.93 &  1.0 &  -0.2 &  -0.2 &  -0.19 & -0.2 \\ \hline
+ -0.05 & -0.18 & -0.04 & -0.2 &  1.0 &  1.0 &  1.0 &  1.0 \\
+ -0.05 & -0.19 & -0.05 & -0.2 &  1.0 &  1.0 &  0.99 &  1.0 \\
+ -0.04 & -0.18 & -0.03 & -0.19 &  1.0 &  0.99 &  1.0 &  1.0 \\
+ -0.04 & -0.19 & -0.03 & -0.2 &  1.0 &  1.0 &  1.0 &  1.0
+\end{array}\right] \]
+
+** Simulation study
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:2), feature_str="1:2"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:4), feature_str="1:4"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=4), savefig=true)
+** Reproducing the results
+*** Barplots for estimation errors  <<sec:reproducing-barplots>>
+* Footnotes
+
+[fn:1]We find that the basic optimization is relatively robust to initialization, but becomes more sensitive when more measurements, like angles, are added.
