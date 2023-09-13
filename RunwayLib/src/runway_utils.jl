@@ -26,7 +26,7 @@ function compute_LLA_rectangle(origin::LLA{<:Real}, rect::@NamedTuple{x::Tuple{T
               maxlat=rect[2].lat, maxlon=rect[2].lon)
 end
 
-function load_runways(runway_file=joinpath(pkgdir(PNPSolve), "data", "2307 A3 Reference Data_v2.xlsx"))
+function load_runways(runway_file=joinpath(pkgdir(RunwayLib), "data", "2307 A3 Reference Data_v2.xlsx"))
     XLSX.readxlsx(runway_file)["Sheet1"] |> XLSX.eachtablerow |> DataFrame
 end
 
