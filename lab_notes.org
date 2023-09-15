@@ -1,8 +1,10 @@
 #+title: Lab_notes
 #+latex_header: \usepackage{siunitx}
+#+latex_header: \usepackage[capitalise]{cleveref}
+#+latex_header: \usepackage{subcaption}
 
 
-* TODOs
+* TODOs :noexport:
 
 ** DONE Implement error plots for x/y/z
 :PROPERTIES:
@@ -207,259 +209,6 @@ However, there is a clear performance drop once they go out of sight.
 - The error is approximately linear with the pixel error. I.e. here's the last image, but with \(\sigma = 2\mathrm{pxl}\).
 [[file:figs/distance_variation_:_approach=4_2pxl.png]]
 
-** Rotation
-/Reproduce:/
-: julia> let feature_mask=(1:2),
-:            σ_rot=1.0°
-:          df = make_alongtrack_distance_df(; feature_mask, σ_rot, sample_rotations=true,
-:                                             N_measurements=1000, distances=(6000:6000).*1m)
-:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
-:        end
-
-We only report \(1\sigma\). Recall you can approximately say
-- 68% fall in \([-\sigma, \sigma]\),
-- 90% fall in \([-1.5\sigma, 1.5\sigma]\), and
-- 99% \([-2.5\sigma, 2.5\sigma]\).
-
-Next, we explore if the results also hold when we're not facing the runway straight on.
-Note that we still assume that we know the precise aircraft orientation/attitude, but we now sample that attitude as follows:
-We start with a straight heading (as before).
-Then, we sample a random vector in the Unit sphere, and sample an angle from a zero-mean Gaussian with a given standard deviation.
-The orientation is then rotated around the sampled vector by the sampled orientation.
-#+caption: Features: (1:2)
-#+begin_table
- | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
- |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
- | \sigma_x     | 153.3 | 151.4 | 199.2 | 193.4 | 217.4 | 211.4 | 205.0 | 181.9 | 206.6 | 173.9 |
- | \sigma_y     | 0.581 | 3.484 | 27.31 | 45.62 | 56.73 | 66.35 | 70.51 | 75.84 | 79.31 | 81.20 |
- | \sigma_z     | 3.267 | 3.742 | 14.06 | 22.87 | 28.98 | 33.28 | 34.73 | 37.42 | 38.68 | 40.70 |
-#+end_table
-
-#+caption: Features: (1:4)
-#+begin_table
-#+latex: \centering
-| \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
-|--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
-| \sigma_x     | 100.4 | 100.3 | 111.9 | 138.3 | 117.9 | 124.3 | 147.5 | 123.1 | 132.4 | 131.6 |
-| \sigma_y     | 0.495 | 4.875 | 27.89 | 44.95 | 56.70 | 66.60 | 70.57 | 74.87 | 78.44 | 80.46 |
-| \sigma_z     | 1.941 | 3.371 | 13.94 | 22.91 | 27.96 | 32.68 | 35.86 | 37.57 | 39.17 | 40.17 |
-#+end_table
-
-#+caption: Features: (all)
-#+begin_table
- | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
- |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
- | \sigma_x     | 3.622 | 4.034 | 15.41 | 43.16 | 62.25 | 71.97 | 77.04 | 89.72 | 81.32 | 86.64 |
- | \sigma_y     | 0.319 | 0.350 | 4.641 | 32.24 | 46.76 | 55.61 | 63.67 | 68.68 | 71.67 | 74.78 |
- | \sigma_z     | 0.327 | 0.333 | 1.242 | 14.29 | 21.11 | 27.26 | 29.89 | 31.37 | 35.46 | 36.69 |
-#+end_table
-
-*** data :noexport:
-**** Features 1:2
-***** formatted
-***** raw :noexport:
-[ Info: 0.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -2.16814  -0.00283   0.0337371
- 153.379     0.581112  3.26735
-[ Info: 5.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -1.21947  0.0660953  -0.0285781
- 151.425    3.4841      3.74225
-[ Info: 10.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -11.5514   0.0548323   0.264447
- 199.26    27.3165     14.0665
-[ Info: 15.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -14.7415   0.364262   0.519558
- 193.49    45.6259    22.877
-[ Info: 20.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -9.21481   0.196593   0.484496
- 217.494    56.7308    28.9801
-[ Info: 25.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -11.4776   0.59367   0.808493
- 211.487   66.3532   33.2873
-[ Info: 30.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -12.9262  -0.565817  -0.535161
- 205.019   70.5194    34.7356
-[ Info: 35.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -12.3143   0.483048   1.00353
- 181.907   75.8419    37.4242
-[ Info: 40.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -11.1313  -2.99233   0.620182
- 206.601   79.315    38.6841
-[ Info: 45.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -5.26704   0.0479666   0.488847
- 173.934    81.2017     40.707
-[ Info: 50.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -10.9768  -1.02146  -0.351597
- 169.441   81.738    41.6722
-[ Info: 55.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -2.00435  -0.835736   0.265345
- 157.637    84.242     41.5165
-[ Info: 60.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -6.77991   0.841156   0.686087
- 169.155    85.6169    42.5281
-**** Features 1:4
-***** formatted
-***** raw :noexport:
-[ Info: 0.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -3.19696  0.0075285  0.0502635
- 100.454    0.495195   1.94139
-[ Info: 5.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-   0.261094  0.0647815  0.0592448
- 100.388     4.87517    3.37197
-[ Info: 10.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -2.82626   0.564647  -0.155263
- 111.925    27.8923    13.9433
-[ Info: 15.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -0.194517  -0.244625  -0.0906993
- 138.364     44.957     22.912
-[ Info: 20.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -2.58071   0.0682961   0.0576568
- 117.993    56.7076     27.9676
-[ Info: 25.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -0.904429   0.698025   0.226501
- 124.327     66.6036    32.681
-[ Info: 30.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -3.62445   2.03755  -0.76615
- 147.533    70.5756   35.8625
-[ Info: 35.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -3.98871   0.558398   0.226711
- 123.186    74.8716    37.5796
-[ Info: 40.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -6.8241   0.0663825  -0.092881
- 132.455   78.4469     39.1741
-[ Info: 45.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -1.41516  -0.150595   0.0492371
- 131.658    80.4602    40.1788
-[ Info: 50.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -2.74761  -2.078    0.314863
- 143.56     83.4171  41.075
-[ Info: 55.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -1.03709   0.833214   0.00498697
- 143.201    83.3268    41.8895
-[ Info: 60.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  -3.57759  -1.05411  -0.455763
- 126.379    83.2375   43.2943
-**** Features (:)
-***** formatted
-
-***** raw :noexport:
-[ Info: 0.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- 0.028292  0.0030881  -0.00489142
- 3.62234   0.319877    0.327784
-[ Info: 5.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -0.0420827  -0.00742929  0.00329768
-  3.95995     0.335672    0.339709
-[ Info: 10.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -0.671178  -0.0376517  0.113909
- 15.419      4.64131    1.24272
-[ Info: 15.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  0.388351   0.412988   0.215115
- 43.1642    32.248     14.2915
-[ Info: 20.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -0.26043  -0.857926   0.145583
- 62.2505   46.7632    21.1139
-[ Info: 25.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  1.57955   0.704326   0.137833
- 71.9703   55.6119    27.2698
-[ Info: 30.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  2.89698  -0.613564   0.0935092
- 77.0481   63.6783    29.8971
-[ Info: 35.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  0.0893006  -0.364597   0.558895
- 89.7247     68.6814    31.3763
-[ Info: 40.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  0.500785  -1.02141  -0.837706
- 81.3209    71.6772   35.4608
-[ Info: 45.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -1.72685  -1.02941  -0.971258
- 86.6457   74.7806   36.6963
-[ Info: 50.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  3.38091  -2.73956   0.301559
- 87.389    78.7439   37.4007
-[ Info: 55.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
- -0.015958   0.998094  -0.145212
- 91.1766    78.1907    38.3517
-[ Info: 60.0°
-[ Info: [mean ; std] for x,y,z:
-2×3 Matrix{Float64}:
-  0.421176   0.171872   0.493875
- 85.9156    80.2746    39.7789
 ** +Near / Near&Far / All+
 ** Different Runways
 - data is stored in [[file:min_max_errors_results_(:)][here]] and [[file:min_max_errors_results_(1:2)][here]].
@@ -596,7 +345,7 @@ using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_
 **** Interude: Normal or Cauchy? :noexport:
 [[file:figs/normal_vs_cauchy.pdf]]
 - \(\mathcal{N}\left(\mu==-0.58, \sigma=1.14\right)\)
-- \(\mathit{Cauchy}\left(\mu=-0.67, σ=0.78\right)\)
+- \(\mathit{Cauchy}\left(\mu=-0.67, \sigma=0.78\right)\)
 
 **** Correlations
 We can also wonder if the errors are correlated. For example, when we are predicting the near left corner too far to the right, do we also predict the far left corner too far to the right?
@@ -618,7 +367,7 @@ We do note, however, that a Gaussian distribution may underestimate the "heavy t
 In other words, the following results may be overly optimistic.
 
 *** Simulation study
-**** We study the effects of consdering the following perturbations and features:
+**** We study the effects of considering the following perturbations and features:
 - near corners, near&far corners, corners from other runways
 - sideline angles
 - non-straight approach attitude
@@ -633,6 +382,7 @@ In other words, the following results may be overly optimistic.
 - Measurement errors are sampled by adding zero-mean Gaussian noise with one pixel of standard deviation.
   (This is roughly consistent with the real error distribution in decent conditions, see [[sec:realmeasurementerrors]].)
 - We start with an initial guess that is set to the true location plus three samples from a zero-mean Gaussian with 50 meters of standard deviation.[fn:1]
+
 **** Error distribution for different alongtrack distances.
 We start by investigating the error distribution of the pose estimate resulting from randomly sampled measurement noise, and evaluated at different alongtrack distances.
 
@@ -643,51 +393,397 @@ We start by investigating the error distribution of the pose estimate resulting 
 
 #+attr_org: :width 300px
 #+name: fig:distance-variation-1-2
+#+caption: We plot the distribution of position estimate errors using the two near corners (i.e. features 1:2) for different alongtrack distances, and report median, quartiles, and approximate 99th percentiles.
 [[file:./figs/distance_variation_1:2_approach=1_.png]]
 
 - We can observe that the y (crosstrack) and z (height) directions are indeed well within spec, and will likely still easily be in spec even given significantly larger pixel errors.
-
   However, the x (alongtrack) direction does not have such a large margin for error, although the requirements are just about satisfied at the current level.
 
-- One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
+- In order to interpret these results, let's recall the following caveats:
+  1. We assume both near corners are perfectly visible;
+  2. Despite the runway being fully visible, in some situations we may have larger pixel errors than assumed here, which will increase these error distributions (approximately linearly, see [[sec:scaling-error]]);
+  3. We assume a dead-straight attitude and no attitude error (we explore violating these assumptions in [[sec:attitude-errors]]).
 
-We also measure the estimation errors for larger measurement noise values, and find that for this setup, the estimation errors reliably scale with the magnitude of the estimation errors.
+- Next, we will explore the effects of adding other runway and angular features, and then consider what happens when some of our assumptions are violated.
+
+**** Beyond near corners.
+#+name: fig:overview
+#+caption: Overview over possible zeroth and first order image features to predict.
+#+attr_latex: :width 0.5\textwidth
+#+attr_org: :width 50%
+[[file:/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/overview2.png]]
+
+We will now consider what features  beyond the near corner one could consider adding to the system.
+For example, we can add additional markings of current or other runways, features of the environment, and also consider "derived" features like the approach angle.
+
+We start by classifying possible features into three categories, moving from features directly in pixel-space to more abstract features, ultimately ending up at directly predicting the position.
+- Zeroth order: Pixel-space predictions. :: \hfill
+  + feature locations or pixel indices, e.g. the location of the runway corners in image/pixel space
+  + notice that depending on whether we predict a location or a pixel index, we can phrase the problem as a /classification/ or a /regression/ problem.
+- First order: Image-space derivatives. :: \hfill
+  + features which can be "drawn into" the image space, e.g. projected threshold width, projected runway length, (enclosed) sideline angles
+  # - also (continuous) projection coordinates in $[0, 1]^2$ (instead of in $\mathcal{I}_y\times \mathcal{I}_y$).
+  + notice that all of these predictions are now /regression/ problems.
+- Second order: Beyond the image space. :: \hfill
+  + Direct position prediction
+  + Another "orthogonal basis", e.g. Nima's angular representation
+  + Other angles
+In [[fig:overview]] we provide a basic overview over zeroth and first order features.
+
+
+
+#+name: fig:1-4-and-all-side-by-side
+#+caption: Side by side example.
+#+begin_figure
+#+latex: \centering
+#+attr_latex: :options {0.45\textwidth}
+#+begin_subcaptionblock
+[[file:./figs/distance_variation_1:4_approach=1_.png]]
+\caption{Results using all four corners of the approaching runway.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.45\textwidth}
+#+begin_subcaptionblock
+[[file:./figs/distance_variation_:_approach=6.png]]
+\caption{Results using all four corners of all runways.}
+#+end_subcaptionblock
+#+end_figure
+
+For now, let us stick to "zeroth order" features, and consider adding the far runway corners, and additionally measuring runway corners from other runways.
+[[fig:1-4-and-all-side-by-side]] presents the results for that setup.
+First, we notice an improvement by using the far corners of approximately \((33%, 15%, 40%)\) for \((x,y,z)\), respectively.
+The improvements in x and z directions can be rationalized by realizing that using these points, we can measure "vertical projection length" in the image plane (i.e. \(\Delta x\) in [[fig:overview]]), which strongly correlates with alongtrack position and height.
+However, we notice that the errors in x-direction still have a fairly wide spread.
+
+The reason for the significantly worse precision in x-direction is easy to rationalize.
+The position estimation from image correspondences roughly corresponds to finding the intersection (or closest point) of two almost parallel rays which pass through the camera plane and the 3d correspondences.
+A small error in the specifics of the rays corresponds in the intersection being moved drastically along the ray's directions -- which corresponds to our alongtrack estimate.[fn:2]
+
+It is therefore natural to consider also landmarks that lie in a direction different to the alongtrack direction.
+The results of this are pictured on the right side in [[fig:1-4-and-all-side-by-side]], and indeed we see that the alongtrack performance is massively improved!
+Interestingly, we also see that the performance drops again closer to the runway, presumably because some threshold corners go out of sight.
+Notice that we still assume the same error distribution for those detections -- however due to the sharp angle, the real error distributions might be larger, and these results may be overly optimistic.
+
+It is also important to note that while these results are promising, if we design the system such that it requires relying on other runways to be in sight, we are severely limiting the systems applicability to airports with multiple runways, and assume all of them to be clearly in sight (no occlusion etc).
+However, this technique may be used to further boost performance of an already certifiable system.
+***** old stuff :noexport:
+# - One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
+
+# We also measure the estimation errors for larger measurement noise values, and find that for this setup, the estimation errors reliably scale with the magnitude of the estimation errors.
 
 - Next, we consider all four corners at the same time, and see if this improves our results ([[fig:distance-variation-1-4]])
 #+name: fig:distance-variation-1-4
+#+caption: Some caption.
 #+attr_org: :width 300px
 [[file:./figs/distance_variation_1:4_approach=1_.png]]
-Indeed, we see some improvement over just using the front corners; approximately a 25% reduction.
+# - At this point, we note that the results ultimately rely on the specifics of the runway; in particular the runway with, and possibly the runway length.
+#   For reference, the runway considered is approximately \(\qty{3000}{\meter}\) long and \(\qty{65}{\meter}\) wide.
 
-- At this point, we note that the results ultimately rely on the specifics of the runway; in particular the runway with, and possibly the runway length.
-  For reference, the runway considered is approximately \(\qty{3000}{\meter}\) long and \(\qty{65}{\meter}\) wide.
+# However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
+# To illustrate, consider [[fig:distance-variation-all-approach-1]] and [[fig:distance-variation-all-approach-4]].
+# We first notice that the alongtrack position estimate is massively improved over previous approaches.
+# However, there is a clear performance drop once they go out of sight.
 
-However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
-To illustrate, consider [[fig:distance-variation-all-approach-1]] and [[fig:distance-variation-all-approach-4]].
-We first notice that the alongtrack position estimate is massively improved over previous approaches.
-However, there is a clear performance drop once they go out of sight.
+# #+name: fig:distance-variation-all-approach-1
+# #+caption: Some caption
+# #+attr_org: :width 300px
+# [[file:figs/distance_variation_all_approach=1_.png]]
+# #+name: fig:distance-variation-all-approach-4
+# #+attr_org: :width 300px
+# [[file:figs/distance_variation_all_approach=4_.png]]
 
-#+name: fig:distance-variation-all-approach-1
-#+caption:
-#+attr_org: :width 300px
-[[file:figs/distance_variation_all_approach=1_.png]]
-#+name: fig:distance-variation-all-approach-4
-#+attr_org: :width 300px
-[[file:figs/distance_variation_all_approach=4_.png]]
-
-
-- The error is approximately linear with the pixel error. I.e. here's the last image, but with \(\sigma = 2\mathrm{pxl}\).
-[[file:figs/distance_variation_:_approach=4_2pxl.png]]
-**** Including angular measurements
+**** First order features: Including angular measurements
 In the previous section we have seen the effect of including different pixel features, i.e. runway corners from the approaching or other runways.
 
-Now also consider adding additional information: the left and right sidelines angles of the approaching runway.
+Now also consider adding additional information: the left and right sidelines angles of the approaching runway (i.e. \(\gamma_{\rm lhs}\) and \(\gamma_{\rm rhs}\) in [[fig:overview]]).
 
+We first note that adding these features seems to make the numerical optimization much more unstable, requiring a more sophisticated solving optimizer and having convergence problems if the initializations are not great (especially if the optimization is initialized with a lesser height than the true solution).
+
+In [[tbl:angular-measurements]] we report the prediction performances at different noise levels.
+We notice that already one degree of angular noise results in worse prediction performance than using no angular measurements at all.
+However, the results can be improved somewhat if there is very little noise -- however even then the improvements are not great, as the optimization still needs to take the noise near corners into account.
+A re-weighting scheme based on the angle sensitivities and error distributions could, improve the results -- however we also found that larger weights for the angular terms resulted in more numerical instability.
+
+#+name: tbl:angular-measurements
+#+caption: Prediction errors when using sideline angle measurements with different levels of noise, and compared against a baseline (last column).
+#+begin_table
 | σ_angle |   0.0° |  0.01° |   0.1° |   0.3° |   0.5° |   1.0° | no angles |
 |---------+--------+--------+--------+--------+--------+--------+-----------|
 | σ_x     | 101.22 | 104.61 | 105.89 | 110.58 | 122.37 | 159.51 |    156.54 |
 | σ_y     | 0.3863 | 0.3967 | 0.3986 | 0.4267 | 0.4869 | 0.5968 |    0.5678 |
 | σ_z     | 2.1189 | 2.1929 | 2.2021 | 2.3073 | 2.5945 | 3.4132 |    3.3251 |
+#+end_table
+
+
+**** Further assumptions: Linear error scaling and different runways <<sec:scaling-error>>
+#+name: fig:pixel-error-comparison
+#+caption: Side by side example.
+#+begin_figure
+#+latex: \centering
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4.png]]
+\caption{One pixel of standard error.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4_2pxl.png]]
+\caption{Two pixels of standard error.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4_10pxl.png]]
+\caption{Ten pixels of standard error.}
+#+end_subcaptionblock
+#+end_figure
+
+It seems empirically correct that the position estimation errors scale linearly with the feature location errors, see e.g. the comparison in [[fig:pixel-error-comparison]].
+However, we do note that it's not clear whether this also holds for more "nonstandard" setups, for example when the attitude wrt the runway is misaligned, and all features are located at a "sharp angle".
+
+Another related question that is whether our results actually hold for the majority of the runways.
+To answer this question, we have rerun the basic setup (with near corners and all visible corners) for every runway listed in the datasheet, which includes about 2000 runways.
+Indeed we find significant variance, however more data is required.
+#latex: \todo{Collect this data.}
+
+
+**** Further assumptions: Attitude errors <<sec:attitude-errors>>
+/Reproduce:/
+: julia> let feature_mask=(1:2),
+:            σ_rot=1.0°
+:          df = make_alongtrack_distance_df(; feature_mask, σ_rot, sample_rotations=true,
+:                                             N_measurements=1000, distances=(6000:6000).*1m)
+:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
+:        end
+
+# We only report \(1\sigma\). Recall you can approximately say
+# - 68% fall in \([-\sigma, \sigma]\),
+# - 90% fall in \([-1.5\sigma, 1.5\sigma]\), and
+# - 99% \([-2.5\sigma, 2.5\sigma]\).
+
+Finally, we explore if the results also hold when we're not facing the runway straight on.
+Note that we still assume that we know the precise aircraft orientation/attitude, but we now sample that attitude as follows:
+We start with a straight heading (as before).
+Then, we sample a random vector in the Unit sphere, and sample an angle from a zero-mean Gaussian with a given standard deviation.
+The orientation is then rotated around the sampled vector by the sampled orientation.
+
+The results when taking features from all runways are presented in [[tbl:misaligned-attitude-all]].
+Tables for only near- and near-far corners are found in the appendix.
+
+#+name: tbl:misaligned-attitude-all
+#+caption: Features: (all)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 3.622 | 4.034 | 15.41 | 43.16 | 62.25 | 71.97 | 77.04 | 89.72 | 81.32 | 86.64 |
+ | \sigma_y     | 0.319 | 0.350 | 4.641 | 32.24 | 46.76 | 55.61 | 63.67 | 68.68 | 71.67 | 74.78 |
+ | \sigma_z     | 0.327 | 0.333 | 1.242 | 14.29 | 21.11 | 27.26 | 29.89 | 31.37 | 35.46 | 36.69 |
+#+end_table
+
+***** data :noexport:
+****** Features 1:2
+******* formatted
+******* raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.16814  -0.00283   0.0337371
+ 153.379     0.581112  3.26735
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.21947  0.0660953  -0.0285781
+ 151.425    3.4841      3.74225
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.5514   0.0548323   0.264447
+ 199.26    27.3165     14.0665
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -14.7415   0.364262   0.519558
+ 193.49    45.6259    22.877
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -9.21481   0.196593   0.484496
+ 217.494    56.7308    28.9801
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.4776   0.59367   0.808493
+ 211.487   66.3532   33.2873
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.9262  -0.565817  -0.535161
+ 205.019   70.5194    34.7356
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.3143   0.483048   1.00353
+ 181.907   75.8419    37.4242
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.1313  -2.99233   0.620182
+ 206.601   79.315    38.6841
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -5.26704   0.0479666   0.488847
+ 173.934    81.2017     40.707
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -10.9768  -1.02146  -0.351597
+ 169.441   81.738    41.6722
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.00435  -0.835736   0.265345
+ 157.637    84.242     41.5165
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.77991   0.841156   0.686087
+ 169.155    85.6169    42.5281
+****** Features 1:4
+******* formatted
+******* raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.19696  0.0075285  0.0502635
+ 100.454    0.495195   1.94139
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+   0.261094  0.0647815  0.0592448
+ 100.388     4.87517    3.37197
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.82626   0.564647  -0.155263
+ 111.925    27.8923    13.9433
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.194517  -0.244625  -0.0906993
+ 138.364     44.957     22.912
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.58071   0.0682961   0.0576568
+ 117.993    56.7076     27.9676
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.904429   0.698025   0.226501
+ 124.327     66.6036    32.681
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.62445   2.03755  -0.76615
+ 147.533    70.5756   35.8625
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.98871   0.558398   0.226711
+ 123.186    74.8716    37.5796
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.8241   0.0663825  -0.092881
+ 132.455   78.4469     39.1741
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.41516  -0.150595   0.0492371
+ 131.658    80.4602    40.1788
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.74761  -2.078    0.314863
+ 143.56     83.4171  41.075
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.03709   0.833214   0.00498697
+ 143.201    83.3268    41.8895
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.57759  -1.05411  -0.455763
+ 126.379    83.2375   43.2943
+****** Features (:)
+******* formatted
+
+******* raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ 0.028292  0.0030881  -0.00489142
+ 3.62234   0.319877    0.327784
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.0420827  -0.00742929  0.00329768
+  3.95995     0.335672    0.339709
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.671178  -0.0376517  0.113909
+ 15.419      4.64131    1.24272
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.388351   0.412988   0.215115
+ 43.1642    32.248     14.2915
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.26043  -0.857926   0.145583
+ 62.2505   46.7632    21.1139
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  1.57955   0.704326   0.137833
+ 71.9703   55.6119    27.2698
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  2.89698  -0.613564   0.0935092
+ 77.0481   63.6783    29.8971
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.0893006  -0.364597   0.558895
+ 89.7247     68.6814    31.3763
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.500785  -1.02141  -0.837706
+ 81.3209    71.6772   35.4608
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -1.72685  -1.02941  -0.971258
+ 86.6457   74.7806   36.6963
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  3.38091  -2.73956   0.301559
+ 87.389    78.7439   37.4007
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.015958   0.998094  -0.145212
+ 91.1766    78.1907    38.3517
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.421176   0.171872   0.493875
+ 85.9156    80.2746    39.7789
 ** Real measurement errors  <<sec:realmeasurementerrors>>
 
 * Appendix
@@ -705,6 +801,25 @@ Correlation values (in service volume):
  -0.04 & -0.18 & -0.03 & -0.19 &  1.0 &  0.99 &  1.0 &  1.0 \\
  -0.04 & -0.19 & -0.03 & -0.2 &  1.0 &  1.0 &  1.0 &  1.0
 \end{array}\right] \]
+** Misaligned Attitude, more tables
+#+caption: Features: (1:2)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 153.3 | 151.4 | 199.2 | 193.4 | 217.4 | 211.4 | 205.0 | 181.9 | 206.6 | 173.9 |
+ | \sigma_y     | 0.581 | 3.484 | 27.31 | 45.62 | 56.73 | 66.35 | 70.51 | 75.84 | 79.31 | 81.20 |
+ | \sigma_z     | 3.267 | 3.742 | 14.06 | 22.87 | 28.98 | 33.28 | 34.73 | 37.42 | 38.68 | 40.70 |
+#+end_table
+
+#+caption: Features: (1:4)
+#+begin_table
+#+latex: \centering
+| \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+|--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+| \sigma_x     | 100.4 | 100.3 | 111.9 | 138.3 | 117.9 | 124.3 | 147.5 | 123.1 | 132.4 | 131.6 |
+| \sigma_y     | 0.495 | 4.875 | 27.89 | 44.95 | 56.70 | 66.60 | 70.57 | 74.87 | 78.44 | 80.46 |
+| \sigma_z     | 1.941 | 3.371 | 13.94 | 22.91 | 27.96 | 32.68 | 35.86 | 37.57 | 39.17 | 40.17 |
+#+end_table
 
 ** Simulation study
 : julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:2), feature_str="1:2"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
@@ -716,5 +831,6 @@ Correlation values (in service volume):
 ** Reproducing the results
 *** Barplots for estimation errors  <<sec:reproducing-barplots>>
 * Footnotes
+[fn:2]Notice that this problem is directly related to the condition number of a 2x2 matrix, which is roughly speaking poorly conditioned when the column vectors (i.e. ray directions) are almost parallel and singular if they are exactly parallel.
 
 [fn:1]We find that the basic optimization is relatively robust to initialization, but becomes more sensitive when more measurements, like angles, are added.

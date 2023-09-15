@@ -1,0 +1,52 @@
+% -*- TeX-command-extra-options: "-shell-escape"; -*-
+\documentclass[convert={density=1200,size=1080x800,outext=.png}, tikz]{standalone}
+\usepackage{amsmath}
+\usetikzlibrary{matrix}
+\usetikzlibrary{angles, quotes}
+\usetikzlibrary{intersections}
+% \usetikzlibrary{arrows.meta}
+\begin{document}
+\begin{tikzpicture}
+
+  \matrix (grid) [matrix of nodes, transparent=1]
+  {
+    1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+    1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+    1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+    1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+  };
+
+  % camera
+  \draw[name path=lens] (grid-2-1.center)
+  to (grid-1-2.center)
+  to (grid-3-2.center)
+  to cycle;
+
+  % height, x, \Delta x
+  \draw[gray, very thin] (grid-2-1.center) to node[left, scale=0.3] {$H$} (grid-4-1.center);
+  \draw[gray, very thin] (grid-4-1.center) to node[below, scale=0.3] {$X$} (grid-4-6.center);
+  \draw (grid-4-6.center) to node[below, scale=0.3] {$\Delta x$} (grid-4-8.center);
+
+  % projection lines
+  \draw[name path=ray1] (grid-2-1.center) to (grid-4-6.center);
+  \draw[name path=ray2] (grid-2-1.center) to (grid-4-8.center);
+
+  % focal length
+  % \draw[<->] (grid-1-1.center) to node[above, scale=0.3]{$f$} (grid-1-2.center);
+  % \draw[densely dotted] (grid-1-1.center) to (grid-2-1.center);
+  % \draw[very thin] (grid-2-1.center) to (grid-2-2.center);
+
+  \draw[red, name intersections={of=lens and ray2, name=i1}] (grid-2-1.center) to node[above, scale=0.3]{$f$} (grid-2-2.center) to node[right, scale=0.3] {$x\prime$} (i1-2);
+
+  \draw[red, name intersections={of=lens and ray2, name=i1}, name intersections={of=lens and ray1, name=i2}, green] (i1-2) to node[below right=0.5 and 1, scale=0.3, opacity=0.9, outer sep=1.5pt, fill=white] {$\Delta x\prime$} (i2-2);
+
+  \node[scale=0.4, anchor=center] at (grid-1-6) {
+\begin{minipage}{3cm}\begin{align*}
+\frac{x\prime_1}{f} &= \frac{H}{X + \Delta x} \text{ and } \frac{x\prime + \Delta x\prime}{f} = \frac{H}{X}  \\
+\Rightarrow \Delta x\prime &= fH (\frac{1}{X} - \frac{1}{X + \Delta x})
+\end{align*}\end{minipage}
+                 };
+  % \node[scale=0.4, anchor=center] at (grid-2-6) {$\frac{X+\Delta x}{H} - \frac{X}{H} = \frac{x\prime_2}{f} - \frac{x\prime_1}{f}$};
+
+\end{tikzpicture}
+\end{document}

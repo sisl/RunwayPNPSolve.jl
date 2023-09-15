@@ -1,8 +1,11 @@
+import Makie: lift
+import Optim
 ## construct pose estimate errors
-function make_error_bars_plot(error_plots_grid, cam_pose_est, sols)
-    errors_obs = lift(cam_pose_gt, sols) do cam_pose_gt, sols
+function make_error_bars_plot(error_plots_grid, pos_gt, rot_gt, sols)
+    errors_obs = lift(pos_gt, sols) do pos, sols
+        cam_pose_gt = AffineMap(rot_gt, pos)
         function compute_means_and_stds(sols)
-            pts = (Point3d∘Optim.minimizer).(filter(Optim.converged, sols))
+            pts = (Point3{XYZ}∘Optim.minimizer).(filter(Optim.converged, sols))
             Δ = (pts .- cam_pose_gt.translation)
             Δ = map(p->abs.(p), Δ)
             μ_x, μ_y, μ_z = mean.([getindex.(Δ, i) for i in 1:3])

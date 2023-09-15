@@ -1,4 +1,4 @@
-\documentclass[convert={density=1200,size=1080x800,outext=.svg}, tikz]{standalone}
+\documentclass[convert={density=1200,size=1080x800,outext=.png}, tikz]{standalone}
 \usetikzlibrary{matrix}
 \usetikzlibrary{angles, quotes}
 \usetikzlibrary{plotmarks}
@@ -33,17 +33,18 @@
   pic ["$\alpha$"scale=0.5, draw, solid, ->] {angle};
   % \draw[gray, dashed, very thin, shorten <=1pt] (grid-3-4.center) to (grid-1-3.center);
 
-  \draw[purple, very thin, densely dotted]
+  \draw[purple, very thin, densely dotted, opacity=1] (grid-1-4.center) to (grid-1-3.center);
+  \draw[purple, very thin, densely dotted, opacity=0]
   (grid-1-4.center) coordinate (A) to
   (grid-1-3.center) coordinate (B) to
   (grid-3-2.center) coordinate (C)
-  pic ["$\gamma_{\rm lhs}$"{scale=0.5, anchor=east}, draw, solid, ->, angle radius=5.0, angle eccentricity=1.0] {angle};
+  pic ["$\gamma_{\rm lhs}$"{scale=0.5, anchor=east}, draw, solid, ->, angle radius=5.0, angle eccentricity=1.0, opacity=1] {angle};
 
-  \draw[purple, very thin, densely dotted]
+  \draw[purple, very thin, densely dotted, opacity=0]
   (grid-1-4.center) coordinate (A) to
   (grid-1-3.center) coordinate (B) to
   (grid-3-4.center) coordinate (C)
-  pic ["$\gamma_{\rm rhs}$"{scale=0.5, anchor=north west}, draw, solid, ->, angle radius=2.5, angle eccentricity=-0.] {angle};
+  pic ["$\gamma_{\rm rhs}$"{scale=0.5, anchor=north west}, draw, solid, ->, angle radius=2.5, angle eccentricity=-0., opacity=1] {angle};
 
 
   % corner coordinates.
@@ -51,8 +52,18 @@
   \draw (grid-5-5.center) node[green!60!black, scale=0.7] {\pgfuseplotmark{pentagon*}} node[black, scale=0.7] {\pgfuseplotmark{pentagon}};
   \draw (grid-3-2.center) node[green!60!black, scale=0.7] {\pgfuseplotmark{pentagon*}} node[black, scale=0.7] {\pgfuseplotmark{pentagon}};
   \draw (grid-3-4.center) node[green!60!black, scale=0.7] {\pgfuseplotmark{pentagon*}} node[black, scale=0.7] {\pgfuseplotmark{pentagon}};
-  \node[below=0.1 of grid-5-1.center, scale=0.35, inner sep=0pt] (corner-label){\((\textcolor{green!50!black}{x, y})\)};
-  \node[below=0 of corner-label, scale=0.35, inner sep=0pt] {near left};
+
+  \node[below=0.1 of grid-5-1.center, scale=0.35, inner sep=0pt] (corner-label-nl){\((\textcolor{green!50!black}{x, y})\)};
+  \node[below=0 of corner-label-nl, scale=0.35, inner sep=0pt] {near left};
+
+  \node[below=0.1 of grid-5-5.center, scale=0.35, inner sep=0pt] (corner-label-nr){\((\textcolor{green!50!black}{x, y})\)};
+  \node[below=0 of corner-label-nr, scale=0.35, inner sep=0pt] {near right};
+
+  \node[left=0.1 of grid-3-2.center, scale=0.35, inner sep=0pt] (corner-label-fl){\((\textcolor{green!50!black}{x, y})\)};
+  \node[below=0 of corner-label-fl.south east, scale=0.35, inner sep=0pt, anchor=north east] {far left};
+
+  \node[right=0.1 of grid-3-4.center, scale=0.35, inner sep=0pt] (corner-label-fr){\((\textcolor{green!50!black}{x, y})\)};
+  \node[below=0 of corner-label-fr.south west, scale=0.35, inner sep=0pt, anchor=north west] {far right};
 
   % alongtrack distance
   \draw[blue, <->, shorten >=1pt, shorten <=1pt] (grid-5-3.center) to

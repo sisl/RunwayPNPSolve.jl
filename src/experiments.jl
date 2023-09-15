@@ -1,22 +1,24 @@
-using PNPSolve, RunwayLib
-using GeodesyXYZExt
-using Rotations
-using DataFrames
-using ThreadsX
-using LinearAlgebra: I, normalize
-import ProgressBars: ProgressBar
-import Base: Fix1
-import Random: seed!
-using Distributions
-using CoordinateTransformations
-using Geodesy
-using Unitful, Unitful.DefaultSymbols
-import StaticArraysCore: SVector
-using StatsBase: winsor
-using Logging
-using Serialization
-import Tau: τ
-import ComponentArrays: ComponentVector
+using PNPSolve, RunwayLib                     # Here's where the magic happens
+using GeodesyXYZExt                           # My library to build a local xyz frame relative to longitude, latitude
+using LinearAlgebra: I, normalize             # ------------------
+import ProgressBars: ProgressBar              #     ...
+import Base: Fix1                             #     ...
+import Random: seed!                          #     ...
+using Logging                                 #     ...
+using DataFrames                              # ------------------
+using Rotations                               # deal with rotation matrices
+using ThreadsX                                # parallelize some operations
+using Distributions                           # Gaussian, Cauchy, pdf, cdf, quantile, ...
+using CoordinateTransformations               # work with coordinate systems, image projections
+using Geodesy                                 # work with Longitude, Latitude etc
+using Unitful, Unitful.DefaultSymbols         # work with statically typed SI units
+import StaticArraysCore: SVector              # Fixed-sized vectors
+using StatsBase: winsor                       # replace outliers
+import Serialization: serialize, deserialize  # store results from long computations
+import Tau: τ                                 # τ = 2π. more reasonable way to count rotations. see https://tauday.com/tau-manifesto
+import ComponentArrays: ComponentVector       # indexing into long array by component. a bit special purpose.
+
+import Rotations: RotY
 
 using AlgebraOfGraphics, CairoMakie
 
