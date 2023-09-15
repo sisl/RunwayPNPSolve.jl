@@ -378,6 +378,15 @@ dz_dy′ = (;
 # ╔═╡ 6255272b-e159-40f0-b16e-24780592032c
 map(mul_one_pxl_of_error, dz_dy′)
 
+# ╔═╡ bde949bd-0a83-4377-8285-0a6cca7b3b73
+dxz_dy′ = (;
+  near = -((ppts.near_left[1]^2 + f^2) * (pts.near_left[2]^2 / ppts.near_left[2]^3)) / √((ppts.near_left[1]^2 + f^2) * (pts.near_left[2] / ppts.near_left[2])^2 - (X^2+Z^2)),
+  far = -((ppts.far_left[1]^2 + f^2) * (pts.far_left[2]^2 / ppts.far_left[2]^3)) / √((ppts.far_left[1]^2 + f^2) * (pts.far_left[2] / ppts.far_left[2])^2 - (X^2+Z^2))
+)
+
+# ╔═╡ 8eabd925-2d12-460e-8b8b-1801ea62c537
+map(mul_one_pxl_of_error, dxz_dy′)
+
 # ╔═╡ 0a6d61dd-2763-474d-baa0-749cf50ace0d
 dy_dy′ = (;
   near = √(X^2 - H^2) / √(ppts.near_left[1]^2 + f^2) |> upreferred,
@@ -2226,6 +2235,8 @@ version = "3.5.0+0"
 # ╠═d20e1ba3-c100-457f-8294-34ea54f10b20
 # ╠═fbb945ab-32ec-43b7-9242-738798ed7195
 # ╠═6255272b-e159-40f0-b16e-24780592032c
+# ╠═bde949bd-0a83-4377-8285-0a6cca7b3b73
+# ╠═8eabd925-2d12-460e-8b8b-1801ea62c537
 # ╠═0a6d61dd-2763-474d-baa0-749cf50ace0d
 # ╠═419b1153-61c1-4465-ab34-00bda59a4853
 # ╠═66e38ecb-d4d8-440c-8267-ecfc20765e82
