@@ -1,0 +1,5 @@
+((nil . ((julia-snail-repl-buffer . "*julia local-PNPSolve*")
+         (julia-snail-port . 10065)
+         (julia-snail-extensions . (ob-julia))
+         (julia-snail-extra-args . ("--threads auto"))
+         )))

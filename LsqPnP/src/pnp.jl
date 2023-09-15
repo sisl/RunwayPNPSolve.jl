@@ -18,7 +18,8 @@ unflatten_points(P::Type{<:StaticVector}, pts::AbstractVector{<:Number}) = P.(ea
 in_camera_img(p::ImgProj{Pixels}) = all(p .∈ [(-3000÷2*1pxl) .. (3000÷2*1pxl);
                                               (-4096÷2*1pxl) .. (4096÷2*1pxl)])
 
-expand_angles(vec::ComponentVector) = ComponentVector(NamedTuple(k=>[sin.(vec[k]); cos.(vec[k])] for k in keys(vec)))
+expand_angles(vec::ComponentVector) =
+    2 * ComponentVector(NamedTuple(k=>[sin.(vec[k]); cos.(vec[k])] for k in keys(vec)))
 
 # We need to overload DiffResults to support mutable static arrays, see https://github.com/JuliaDiff/DiffResults.jl/issues/25
 DiffResult(value::MArray, derivs::Tuple{Vararg{MArray}}) = MutableDiffResult(value, derivs)

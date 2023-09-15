@@ -1,0 +1,1108 @@
+#+title: Pose Estimation Sensitivity Analysis: Beyond Point Associations and PnP
+#+title: Simulation Study: Empirical Effects Of Measurement Errors On Position Estimation
+#+author: Romeo Valentin (romeov@stanford.edu)
+#+email: romeo.valentin.int@airbus-sv.com or romeov@stanford.edu
+#+date: Summer 2023
+#+options: toc:nil todo:nil
+
+#+LATEX_HEADER: \usepackage{xcolor}
+#+LATEX_HEADER: \definecolor{bg}{rgb}{0.95,0.95,0.95}
+#+LATEX_HEADER: \usepackage{minted}
+#+LATEX_HEADER: \usepackage{amsmath}
+#+LATEX_HEADER: \usepackage{cleveref}
+#+LATEX_HEADER: \usepackage{siunitx}
+#+LATEX_HEADER: \usepackage{pdfpages}
+#+LATEX_HEADER: \newcommand{\todo}[1]{\textcolor{red}{TODO (Romeo): #1}}
+#+latex_header: \usepackage{siunitx}
+#+latex_header: \usepackage{subcaption}
+#+latex_header: \usepackage[capitalise]{cleveref}
+#+options: toc:nil
+
+#+begin_abstract
+- we currently only observe front two corners.
+- what's the real error distribution in x/y? are the errors correlated?
+- how do errors in x/y influence our pose estimate?
+- how does it change with alongtrack distance? height? crosstrack error?
+- how do error correlations influence our pose estimate?
+- how do errors in rotation influence our pose estimate?
+- can we improve by taking four corners?
+- can we improve by taking edge angles?
+- can we improve by considering other runways?
+#+end_abstract
+
+* Introduction
+** Related work?
+** Contributions?
+* Introduction2
+The goal of the vision pipeline is to provide a pose estimate of the airplane when approaching a runway.
+To this end, the system must first try to find the runway, which may only occupy a small fraction of the total image.
+Then, the system must extract useful image features of the runway, which may be matched up with the runway width, length, etc retrieved from a database.
+Finally, the image features are combined to produce a pose estimate at each frame, which is then fused together with other sensor and predictive information.
+
+In this report we will focus on the second and third step of this process.
+When designing these system, many design decisions come up, including how to design a computer vision pipeline to extract image features, what image features are useful, and how to robustify the system against small errors.
+
+** Overview of the current approach
+First, let's briefly review how the current implementation functions.
+
+In order to simplify the problem and reduce the solution space, we assume that the orientation (attitude) of the airplane is well-known -- indeed for the current analysis it is assumed that the orientation estimate is error-free.[fn:4]
+Then, stage two of the system takes an image crop containing the runway, and predicts a pair of pixel indices \((i_x, i_y)\) for the two near runway corners (specifically, the ends of the runway threshold).
+These indices are converted to spatial coordinates and matched up with the projections of known runway corner locations.
+The position estimate is then computed by using the OpenCV PnP implementation, which essentially solves a quadratic optimization problem minimizing the reprojection error of the known corner locations compared against the measured coordinates.
+It is solved iteratively with the Levenberg-Marquardt algorithm.
+
+*** Service volume
+In general, the PnP problem has many possible solutions if only a few correspondence points are given.
+Additionally, it may become ill-posed when the perspective becomes "extreme", e.g. when the camera is very close to the runway.
+However, the MPVS specifies a "service volume" which restricts the space in which the algorithm has to function.
+Specifically, the service volume is currently defined as
+- alongtrack distance between \(\qty{300}{\meter}\) and \(\qty{6000}{\meter}\),
+- crosstrack angle between \(\ang{-3}\) and \(\ang{3}\), and
+- vertical angle between \(\ang{1.2}\) and \(\ang{6}\).
+*** Error distributions and correlations :noexport:
+
+** Contributions of this work
+Given the described approach, several questions arise naturally, which may include
+- How does our pose estimate change in the presence of prediction errors? How does this relate to the "allowed" pose estimate errors?
+- Can we reduce the impact of prediction errors by using different or more features?
+- Can we improve our estimate by using information from multiple runways?
+- Can we improve on the OpenCV PNP formulation?
+
+Throughout this report we will give insights to all of these questions and will develop a mathematically well-founded approach to solving the pose-estimation problem in a robust way.
+
+** Old stuff :noexport:
+- notice that stage 2 and stage 3 are tightly coupled, and we will treat them as a single stage throughout this report.
+
+- due to difficulty collecting automatic labels, hand-label 5% of the data, automatically label the rest.
+- explanation
+- pixel error distribution
+- numerical results
+** Motivation
+We have found that the representation of the runway in the image space is crucial to the accuracy of the system.
+Indeed, the "straight-forward" representation of trying to predict near/far runway corners and recovering the pose leads
+to errors of ~150m alongtrack per pixel error.
+
+
+### Approaches investigated
+Since the alongtrack error dominates the problem, we focus on a simplified problem where we only try to estimate
+the alongtrack position (x), and assume that orientation, crosstrack and elevation are known.
+
+We start by investigating three approaches:
+1. Estimating the near-runway-width in pixel space, and associating with the known runway width.
+2. Estimating the runway length in pixel space, and associating with the known runway width.
+3. Estimating the angle between the sidelines.
+** Related work
+* A first motivating example
+We begin the discussion by analyzing the PnP algorithm for a specific runway and the simplest choice of feature representation: predicting the pixel coordinates of the near runway corners.
+We will explore how we can analyze the algorithms sensitivity to errors, and what happens when we introduce additional features to the representation, namely the far corners, and corners from other runways.
+We will see that by default, the algorithm performs somewhat poorly in particular in alongtrack direction, and also does not improve by adding the features.
+We will discuss what can be done for this specific case, and then discuss a more general setting where we consider a range of different parametrizations and their sensitivities.
+
+** Localization on the Albuquerque runway.  <<sec:localization-kabq>>
+#+name: fig:KABQ
+#+attr_latex: :width 1.0\textwidth
+#+attr_org: :width 200px
+[[file:../SensitivityReport/figs/KABQ.png]]
+# TODO (Romeo): Insert Tyler picture.
+Let's start by considering the localization problem on the Albuquerque runway (KABQ).
+KABQ has three different runways, which are oriented towards north-east, south-east, and east respectively.
+For now we will assume that we are located south-west of the airport, approaching the north-east facing runway.
+This runway has length \(\qty{3000}{\meter}\) and width \(\qty{65}{\meter}\).
+We define the coordinate system as in the MSVP: it is centered in the middle of the runway's threshold line, with the x-axis aligned with the alongtrack direction, the y-axis pointing along the threshold line to the left, and the z-axis pointing up.
+
+In order to understand the safety-properties of our algorithm, we want to explore some worst-case properties.
+Therefore, we will position our aircraft/camera as far and low as "possible" (as given by the service volume); however, we will center it and align it perfectly for now.
+Let \(\theta\) denote the position and \(R\) the rotation matrix (Euler notation), then we have
+\[
+\theta = \begin{bmatrix} \qty{-6000}{\meter} \\ \qty{0}{\meter} \\ \qty{126}{\meter} \end{bmatrix}\
+\text{and} \
+R = I_3.
+\]
+
+We will now consider the real locations and projections of the front two corners.
+For this, let
+\[
+p_{n,l}(\theta) = \begin{bmatrix}
+  x_{n,l}(\theta) \\
+  y_{n,l}(\theta) \\
+  z_{n,l}(\theta)
+\end{bmatrix} = \begin{bmatrix}
+  \qty{6000}{\meter} \\
+  \qty{0}{\meter} \\
+  \qty{-61}{\meter}
+\end{bmatrix}
+\]
+denote the /near, left/ (index \((n,l)\)) threshold corner in camera perspective, and let
+\[
+p'_{n,l} = \begin{bmatrix}
+  x'_{n,l} \\
+  y'_{n,l}
+\end{bmatrix}\]
+denote the projections of the corner onto the image plane, using the standard pinhole camera model with focal length \(f = \qty{35}{\milli\meter}\).
+(Here, \(x'\) points up in the camera image, and \(y'\) points left.)
+Specifically, let's consider \(\tilde{p}'_{n,l}\) as the measured (and possibly erroneous) corner positions estimates in the image as determined by the computer vision algorithm, and \(p'_{n,l}(\theta)\) as the reprojection of the known corner location given a camera position estimate \(\theta\).
+Then we can try to find our pose estimate by solving
+#+name: eq:motivation-lsq
+\begin{equation}
+\theta = \arg \min_\theta \sum_{\rho \in \{l,r\}} \left(\tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta)\right)^2 + \left(\tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta)\right)^2
+\end{equation}
+using an iterative solver and a reasonable initial guess.
+Notice that [[eq:motivation-lsq]] contains four data points (\(\tilde{x}'_{n,l}, \tilde{x}'_{n,r}, \tilde{y}'_{n,l}, \tilde{y}'_{n,r}\)) for three variables (\(\theta_1, \theta_2, \theta_3\)), i.e. we already have an overdetermined problem[fn:5].
+
+In order to analyze this equation further, we denote the loss function as \(l(\theta)\) and set the derivative to zero, i.e. \(\nabla_\theta l(\theta) \overset{!}{=} \vec{0}\).
+Then we get
+\begin{equation}
+\nabla_\theta l(\theta) = \sum_{\rho \in \{l, r\}}  \left( \tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta) \right) (- \frac{\partial x'_{n,\rho}(\theta)}{\partial\theta}) + \left( \tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta) \right) (- \frac{\partial y'_{n,\rho}(\theta)}{\partial\theta}) \overset{!}{=} 0.
+\end{equation}
+Interestingly, we can see that the quantities \(q\) (where \(q = x'_{n,\rho}\) or \(q = y'_{n,\rho}\)) are minimized "more strongly" if \(\frac{\partial q(\theta)}{\partial \theta}\) is large.
+Another perspective on this observation is that \(\frac{\partial q(\theta)}{\partial \theta_i}\) determines how much the difference \(\left( \tilde{q} - q(\theta) \right)\) influences the pose coordinate \(\theta_i\).
+(Recall that \(\frac{\partial q(\theta)}{\partial \theta}\) is a three dimensional vector with one entry for each \(\theta_i\).)
+
+Further, we notice that if \(q\) is very sensitive to \(\theta\), minimizing \((\tilde{q} - q(\theta)\) will have a larger effect on \(\theta\) than if \(q\) is not very sensitive -- again directly linked through \(\frac{\partial q(\theta)}{\partial \theta}\).
+Therefore, it turns out that we are placing an implicit "importance weights" of how much influence a given quantity has on \(\theta\) where the importance weight is equal to \(\left(\frac{\partial q(\theta)}{\partial \theta}\right)^2\).
+
+It seems therefore natural to consider the partial derivatives directly to understand each components influence on the final solution.
+This will also help us understand what happens when we add more image features.
+
+
+** Computing partial derivatives.
+We wish to compute the partial derivatives \(\frac{\partial q_i}{\partial \theta_j}\) for the quantities and position coordinates introduced above.
+Unfortunately, the relation between \(q_i\) and \(\theta_j\) can become quite complicated, especially when considering the general case with arbitrary rotations and positions.
+However, we are able to establish analytic relationships without too much struggle when considering positions that have no crosstrack offset and straight orientation.
+(We will discuss later what happens when these assumptions are violated.)
+
+\todo{I can probably move this part to the appendix or so...}
+Before we get started, let's recall one important mathematical theorem -- The Inverse Function Theorem -- which roughly states that for bijective functions \(q(\theta)\) we have \(\frac{\partial q(\theta)}{\partial \theta} = \frac{1}{\frac{\partial \theta}{\partial q(\theta)}}\) (see e.g. Wikipedia).
+
+Let us again consider the position and orientation introduced in [[sec:localization-kabq]].
+In this setting, we first establish relations between \(x'\) and the different \(\theta_i \in \{x, y , z\}\) using
+\[
+\frac{x'}{f} = \frac{z}{x}.
+\]
+Using this simple relation, we can find
+\[
+\frac{\partial x'}{\partial x} = -\frac{fz}{x^2}
+\]
+and
+\[
+\frac{\partial x'}{\partial z} = -\frac{f}{x}.
+\]
+We further notice that \(x'\) and \(y\) are independent.
+
+We can do something similar for \(y'\), although the equations are more complicated (see [[sec:dx-dxp-derivation]]).
+All together, we get the following Jacobi matrix:
+#+name: eq:jacobian-1
+\begin{equation}\begin{aligned}
+\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
+-\frac{fz}{x^2} & 0 & -\frac{f}{x} \\ \\
+-\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - z^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2} & \sqrt{\frac{x'^2 + f^2}{x^2 + z^2}}&
+-\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - x^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2}
+\end{bmatrix} \\ \vspace{0.5cm} \\
+&= \begin{bmatrix}
+\num{-1.225e-7} & 0 & \num{5.833e-6} \\ \\
+\num{-2.963e-8} & \num{5.835e-6} & \num{-6.224e-10}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+(Note that \(\frac{\partial x_{n,l}}{\partial \theta_j} = \frac{\partial x_{n,r}}{\partial \theta_j}\) etc, therefore the full matrix would be just twice the printed matrix stacked).
+
+If we recall again that these terms build an implicit weight on how strongly each term is minimized, we can see that \(\theta_1 = x\) is mostly minimized through \(x'\), and similar for \(\theta_3 = z\).
+Interestingly though, \(\frac{\partial z}{\partial x'}\) is roughly five times larger than \(\frac{\partial x}{\partial x'}\).
+This means in cases where \(x\) and \(z\) are not consistent, the optimization algorithm places a much higher weight on minimizing the consistency error for \(z\).
+In [[sec:pnp-problem]] we will go into more detail how such effects can be circumvented.
+
+Using the inverse of the derived partial derivatives, we can also make some statements about the magnitude of the errors that may be introduced given some pixel error.
+Recall that by the Inverse Function Theorem we have \(\frac{\partial \theta_j}{\partial q_i} = \frac{1}{\frac{\partial q_i}{\partial \theta_j}}\) and that \(\Delta \theta_j \approx \frac{\partial \theta_j}{\partial q_i} \cdot \Delta q_i\).
+For now, let us assume that we have one pixel of error, and let the pixel size be \(\qty{0.00345}{\milli\meter}\).
+Then, e.g. the error introduced to our estimate for \(x\) through \(y'\) can be up to \(\qty{126}{\meter}\).
+\todo{Have to think a bit more about how the potential errors interact with the implicit weights...}
+
+Note that this is roughly consistent with our experimental numerical results, that show that for one pixel of measurement error we get about \(\qty{120}{\meter}\) of alongtrack estimation error.
+
+** Beyond near corners.
+Now that we have seen how to analyze the scenario when measuring the locations of the near corners, let's consider what would happen if we take into account the far corners as well.
+Indeed we can simply compute the same Jacobian as in [[eq:jacobian-1]] and replace \(x\) by \(x + \Delta x\).
+This yields
+#+name: eq:jacobian-1
+\begin{equation}\begin{aligned}
+\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
+\num{-5.444e-8} & 0 & \num{3.888e-6} \\ \\
+\num{-1.317e-8} & \num{3.889e-6} & \num{-9.822e-9}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+\todo{I have to think a bit more about what this implies and how this matches up with the observation I've made in the numerical simulations}.
+\todo{Add numerical results.}
+** Error correlations and the implications
+#+name: fig:error-correlations
+#+caption: \todo{Explain this plot and the implications. Refer to figures in next section.}
+#+attr_latex: :width \textwidth
+#+attr_org: :width 300
+[[file:../SensitivityReport/figs/correlations.png]]
+
+* Measurement Error Distribution and Correlations
+/The results in this section may be reproduced by the notebook located at https://github.com/airbus-wayfinder/PNPSolve.jl/blob/main/notebooks/error_distribution.jl
+using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_with_manual_Q3_pre_release.csv=./
+
+- Distribution full service volume (1332 samples)
+- Distribution extreme service volume (105 samples)
+#+name: fig:measurement-error-distributions
+#+caption: Empirical error distributions of prediction location of the different runway corners.
+#+begin_figure
+#+attr_latex: :options {0.48\textwidth}
+#+begin_subcaptionblock
+[[file:figs/error_distribution_in_service_volume.pdf]]
+#+end_subcaptionblock
+#+attr_latex: :options {0.48\textwidth}
+#+begin_subcaptionblock
+[[file:figs/error_distribution_in_extreme_service_volume.pdf]]
+#+end_subcaptionblock
+#+end_figure
+
+** Interlude: Normal or Cauchy? :noexport:
+[[file:figs/normal_vs_cauchy.pdf]]
+- \(\mathcal{N}\left(\mu==-0.58, \sigma=1.14\right)\)
+- \(\mathit{Cauchy}\left(\mu=-0.67, \sigma=0.78\right)\)
+
+** Correlations <<sec:error-correlations>>
+We can also wonder if the errors are correlated. For example, when we are predicting the near left corner too far to the right, do we also predict the far left corner too far to the right?
+What about relations between left-right and up-down?
+In [[fig:error-correlations]] we see that there is indeed a strong correlation between all for corners, such that all x predictions are correlated, and all y predictions are correlated; however x and y do not seem to be correlated.
+
+#+name: fig:error-correlations
+#+begin_figure
+file:figs/error_correlations.pdf
+\caption{Error correlations for all samples in the service volume.}
+#+end_figure
+
+** Conclusion
+For the further studies, we will proceed with the assumption that errors are sampled from a zero-mean Gaussian with one pixel of standard deviation, which seems approximately justified.
+In general we will consider the uncorrelated case (although somewhat misspecified given the above results), however we will also briefly consider the correlated case.
+
+We do note, however, that a Gaussian distribution may underestimate the "heavy tails".
+In other words, the following results may be overly optimistic.
+
+* Simulation study
+** Simulation
+- we retrieve real runway data from a database (=2307 A3 Reference Data_v2.xlsx=).
+- our default case will be KABQ, \([\qty{-6000}{m}, \qty{0}{m}, \qty{1.2}{\degree}]\)
+- we solve the problem similar to how opencv solves it: given known 3D datapoints, and assuming a pose, we project the 3D datapoints onto the screen and compare with the actual measurements.
+- then we use an optimization method to minimize the squared sum of errors in x and y direcetion (screen coordinates).
+- specifically, we use the Levenberg-Marquardt algorithm (same as OpenCV) provided by LsqFit.jl.
+  We also tried other algorithms, but generally observed worse performance, specifically when other measurements like angles are also taken into account.
+
+- Using this simulation allowed us to simulate different error distributions, airplane positions and orientations, and runway setups and approaches.
+- There also has been some work on processing uncertainty estimates, although this will not be included in this report.
+** We study the effects of considering the following perturbations and features:
+- near corners, near&far corners, corners from other runways
+- sideline angles
+- non-straight approach attitude
+- error in attitude estimation
+- consistency across different runways (KABQ, KSFO, ...)
+
+** Baseline setup:
+Our default case will be the runway KABQ (Albuquerque), positioned at an alongtrack distance of (negative) \(\qty{6000}{\meter}\), horizontally centered (i.e. no crosstrack error), and with a vertical angle of \(\qty{1.2}{\degree}\).
+  Note that the crosstrack and height values are chosen such that they lie on the extreme of the service boundary.
+
+Estimation using near two corners, equal weighting in x/y direction.
+Measurement errors are sampled by adding zero-mean Gaussian noise with one pixel of standard deviation.
+(This is roughly consistent with the real error distribution in decent conditions, see [[sec:realmeasurementerrors]].)
+We start with an initial guess that is set to the true location plus three samples from a zero-mean Gaussian with 50 meters of standard deviation.[fn:file1_1]
+
+** Error distribution for different alongtrack distances.
+We start by investigating the error distribution of the pose estimate resulting from randomly sampled measurement noise, and evaluated at different alongtrack distances.
+
+[[fig:distance-variation-1-2]] shows the resulting error distributions (median, 25th and 75th percentile, approximate 99th percentile)
+  for different alongtrack distances given the baseline setup described aboove.
+Note that we additionally report the error requirements specifified in the MPVS.
+Instructions for reproducing the figures are given in [[sec:reproducing-barplots]].
+
+#+attr_org: :width 300px
+#+attr_latex: :width 0.5\textwidth
+#+name: fig:distance-variation-1-2
+#+caption: We plot the distribution of position estimate errors using the two near corners (i.e. features 1:2) for different alongtrack distances, and report median, quartiles, and approximate 99th percentiles.
+[[file:./figs/distance_variation_1:2_approach=1_.png]]
+
+We can observe that the y (crosstrack) and z (height) directions are indeed well within spec, and will likely still easily be in spec even given significantly larger pixel errors.
+However, the x (alongtrack) direction does not have such a large margin for error, although the requirements are just about satisfied at the current level.
+
+In order to interpret these results, let's recall the following caveats:
+1. We assume both near corners are perfectly visible;
+2. Despite the runway being fully visible, in some situations we may have larger pixel errors than assumed here, which will increase these error distributions (approximately linearly, see [[sec:scaling-error]]);
+3. We assume a dead-straight attitude and no attitude error (we explore violating these assumptions in [[sec:attitude-errors]]).
+
+Next, we will explore the effects of adding other runway and angular features, and then consider what happens when some of our assumptions are violated.
+
+** The case of correlated noise
+#+name: fig:results-with-correlated-noise
+#+caption: This shows the results with the same setup as above (near corners only, one pixel of standard measurement error), but now the errors are sampled in a correlated fashion according to the correlations measured from real predictions.
+#+attr_latex: :width 0.5\textwidth
+[[file:figs/distance_variation_1:2,_correlated_noise_approach=1_corr.png]]
+
+As we have seen in [[sec:error-correlations]], the measurement errors are not uncorrelated as assumed in our simulation setup.
+Indeed, the errors within the x and y predictions, respectively, are highly correlated.
+[[fig:results-with-correlated-noise]] presents the results when rerunning the simulation study, but this time simulating correlated noise with correlation values given by the measured values (see [[sec:correlation-matrix]] for the full values).
+
+We find that while the y and z errors are mostly the same, the alongtrack error has improved drastically.
+
+#+name: fig:correlated-errors-schematic
+#+caption: A schematic illustration of why uncorrelated noise leads to large alongtrack errors.
+#+begin_figure
+#+attr_latex: :options {0.45\textwidth}
+#+begin_subcaptionblock
+[[file:notebooks/figs/stability-analysis2.pdf]]
+\caption{The case of correlated noise.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.50\textwidth}
+#+begin_subcaptionblock
+[[file:notebooks/figs/stability-analysis3.pdf]]
+\caption{The case of uncorrelated noise.}
+#+end_subcaptionblock
+#+end_figure
+
+** Beyond near corners.
+#+name: fig:overview
+#+caption: Overview over possible zeroth and first order image features.
+#+attr_latex: :width 0.5\textwidth
+#+attr_org: :width 50%
+[[file:/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/overview2.png]]
+
+We will now consider what features  beyond the near corner one could consider adding to the system.
+For example, we can add additional markings of current or other runways, features of the environment, and also consider "derived" features like the approach angle.
+
+We start by classifying possible features into three categories, moving from features directly in pixel-space to more abstract features, ultimately ending up at directly predicting the position.
+- Zeroth order: Pixel-space predictions. :: \hfill
+  + feature locations or pixel indices, e.g. the location of the runway corners in image/pixel space
+  + notice that depending on whether we predict a location or a pixel index, we can phrase the problem as a /classification/ or a /regression/ problem.
+- First order: Image-space derivatives. :: \hfill
+  + features which can be "drawn into" the image space, e.g. projected threshold width, projected runway length, (enclosed) sideline angles
+  # - also (continuous) projection coordinates in $[0, 1]^2$ (instead of in $\mathcal{I}_y\times \mathcal{I}_y$).
+  + notice that all of these predictions are now /regression/ problems.
+- Second order: Beyond the image space. :: \hfill
+  + Direct position prediction
+  + Another "orthogonal basis", e.g. Nima's angular representation
+  + Other angles
+In [[fig:overview]] we provide a basic overview over zeroth and first order features.
+
+
+
+#+name: fig:1-4-and-all-side-by-side
+#+caption: Side by side example.
+#+begin_figure
+#+latex: \centering
+#+attr_latex: :options {0.45\textwidth}
+#+begin_subcaptionblock
+[[file:./figs/distance_variation_1:4_approach=1_.png]]
+\caption{Results using all four corners of the approaching runway.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.45\textwidth}
+#+begin_subcaptionblock
+[[file:./figs/distance_variation_:_approach=6.png]]
+\caption{Results using all four corners of all runways.}
+#+end_subcaptionblock
+#+end_figure
+
+For now, let us stick to "zeroth order" features, and consider adding the far runway corners, and additionally measuring runway corners from other runways.
+[[fig:1-4-and-all-side-by-side]] presents the results for that setup.
+First, we notice an improvement by using the far corners of approximately \((33%, 15%, 40%)\) for \((x,y,z)\), respectively.
+The improvements in x and z directions can be rationalized by realizing that using these points, we can measure "vertical projection length" in the image plane (i.e. \(\Delta x\) in [[fig:overview]]), which strongly correlates with alongtrack position and height.
+However, we notice that the errors in x-direction still have a fairly wide spread.
+
+The reason for the significantly worse precision in x-direction is easy to rationalize.
+The position estimation from image correspondences roughly corresponds to finding the intersection (or closest point) of two almost parallel rays which pass through the camera plane and the 3d correspondences.
+A small error in the specifics of the rays corresponds in the intersection being moved drastically along the ray's directions -- which corresponds to our alongtrack estimate.[fn:file1_2]
+
+It is therefore natural to consider also landmarks that lie in a direction different to the alongtrack direction.
+The results of this are pictured on the right side in [[fig:1-4-and-all-side-by-side]], and indeed we see that the alongtrack performance is massively improved!
+Interestingly, we also see that the performance drops again closer to the runway, presumably because some threshold corners go out of sight.
+Notice that we still assume the same error distribution for those detections -- however due to the sharp angle, the real error distributions might be larger, and these results may be overly optimistic.
+
+It is also important to note that while these results are promising, if we design the system such that it requires relying on other runways to be in sight, we are severely limiting the systems applicability to airports with multiple runways, and assume all of them to be clearly in sight (no occlusion etc).
+However, this technique may be used to further boost performance of an already certifiable system.
+*** old stuff :noexport:
+# - One shorter runways, using only near or near & far is just about enough when \(\sigma = 1\mathrm{pxl}\).
+
+# We also measure the estimation errors for larger measurement noise values, and find that for this setup, the estimation errors reliably scale with the magnitude of the estimation errors.
+
+- Next, we consider all four corners at the same time, and see if this improves our results ([[fig:distance-variation-1-4]])
+#+name: fig:distance-variation-1-4
+#+caption: Some caption.
+#+attr_org: :width 300px
+[[file:./figs/distance_variation_1:4_approach=1_.png]]
+# - At this point, we note that the results ultimately rely on the specifics of the runway; in particular the runway with, and possibly the runway length.
+#   For reference, the runway considered is approximately \(\qty{3000}{\meter}\) long and \(\qty{65}{\meter}\) wide.
+
+# However, we can take information from other runways and incorporate them, which yields substantial benefits while the other runways are in sight.
+# To illustrate, consider [[fig:distance-variation-all-approach-1]] and [[fig:distance-variation-all-approach-4]].
+# We first notice that the alongtrack position estimate is massively improved over previous approaches.
+# However, there is a clear performance drop once they go out of sight.
+
+# #+name: fig:distance-variation-all-approach-1
+# #+caption: Some caption
+# #+attr_org: :width 300px
+# [[file:figs/distance_variation_all_approach=1_.png]]
+# #+name: fig:distance-variation-all-approach-4
+# #+attr_org: :width 300px
+# [[file:figs/distance_variation_all_approach=4_.png]]
+
+** First order features: Including angular measurements
+In the previous section we have seen the effect of including different pixel features, i.e. runway corners from the approaching or other runways.
+
+Now also consider adding additional information: the left and right sidelines angles of the approaching runway (i.e. \(\gamma_{\rm lhs}\) and \(\gamma_{\rm rhs}\) in [[fig:overview]]).
+
+We first note that adding these features seems to make the numerical optimization much more unstable, requiring a more sophisticated solving optimizer and having convergence problems if the initializations are not great (especially if the optimization is initialized with a lesser height than the true solution).
+
+In [[tbl:angular-measurements]] we report the prediction performances at different noise levels.
+We notice that already one degree of angular noise results in worse prediction performance than using no angular measurements at all.
+However, the results can be improved somewhat if there is very little noise -- however even then the improvements are not great, as the optimization still needs to take the noise near corners into account.
+A re-weighting scheme based on the angle sensitivities and error distributions could, improve the results -- however we also found that larger weights for the angular terms resulted in more numerical instability.
+
+#+name: tbl:angular-measurements
+#+caption: Prediction errors when using sideline angle measurements with different levels of noise, and compared against a baseline (last column).
+#+begin_table
+| \sigma_angle |   0.0° |  0.01° |   0.1° |   0.3° |   0.5° |   1.0° | no angles |
+|---------+--------+--------+--------+--------+--------+--------+-----------|
+| \sigma_x | 101.22 | 104.61 | 105.89 | 110.58 | 122.37 | 159.51 |    156.54 |
+| \sigma_y | 0.3863 | 0.3967 | 0.3986 | 0.4267 | 0.4869 | 0.5968 |    0.5678 |
+| \sigma_z | 2.1189 | 2.1929 | 2.2021 | 2.3073 | 2.5945 | 3.4132 |    3.3251 |
+#+end_table
+
+
+** Further assumptions: Linear error scaling and different runways <<sec:scaling-error>>
+#+name: fig:pixel-error-comparison
+#+caption: Side by side example.
+#+begin_figure
+#+latex: \centering
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4.png]]
+\caption{One pixel of standard error.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4_2pxl.png]]
+\caption{Two pixels of standard error.}
+#+end_subcaptionblock
+#+attr_latex: :options {0.32\textwidth}
+#+begin_subcaptionblock
+[[file:figs/distance_variation_:_approach=4_10pxl.png]]
+\caption{Ten pixels of standard error.}
+#+end_subcaptionblock
+#+end_figure
+
+It seems empirically correct that the position estimation errors scale linearly with the feature location errors, see e.g. the comparison in [[fig:pixel-error-comparison]].
+However, we do note that it's not clear whether this also holds for more "nonstandard" setups, for example when the attitude wrt the runway is misaligned, and all features are located at a "sharp angle".
+
+Another related question that is whether our results actually hold for the majority of the runways.
+To answer this question, we have rerun the basic setup (with near corners and all visible corners) for every runway listed in the datasheet, which includes about 2000 runways.
+Indeed we find significant variance, however more data is required.
+#latex: \todo{Collect this data.}
+
+
+** Further assumptions: Attitude misalignment <<sec:attitude-errors>>
+/Reproduce:/
+: julia> let feature_mask=(1:2),
+:            σ_rot=1.0°
+:          df = make_alongtrack_distance_df(; feature_mask, σ_rot, sample_rotations=true,
+:                                             N_measurements=1000, distances=(6000:6000).*1m)
+:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
+:        end
+
+# We only report \(1\sigma\). Recall you can approximately say
+# - 68% fall in \([-\sigma, \sigma]\),
+# - 90% fall in \([-1.5\sigma, 1.5\sigma]\), and
+# - 99% \([-2.5\sigma, 2.5\sigma]\).
+
+Here, we explore if the results also hold when we're not facing the runway straight on.
+Note that we still assume that we know the precise aircraft orientation/attitude, but we now sample that attitude as follows:
+We start with a straight heading, \(\qty{6000}{\meter}\) alongtrack distance away (as before).
+Then, we sample a random vector in the Unit sphere, and sample an angle from a zero-mean Gaussian with a given standard deviation.
+The orientation is then rotated around the sampled vector by the sampled orientation.
+
+The results when taking features from all runways are presented in [[tbl:misaligned-attitude-all]].
+Tables for only near- and near-far corners are found in [[sec:appendix-misaligned-attitude]].
+
+#+name: tbl:misaligned-attitude-all
+#+caption: Features: (all)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 3.622 | 4.034 | 15.41 | 43.16 | 62.25 | 71.97 | 77.04 | 89.72 | 81.32 | 86.64 |
+ | \sigma_y     | 0.319 | 0.350 | 4.641 | 32.24 | 46.76 | 55.61 | 63.67 | 68.68 | 71.67 | 74.78 |
+ | \sigma_z     | 0.327 | 0.333 | 1.242 | 14.29 | 21.11 | 27.26 | 29.89 | 31.37 | 35.46 | 36.69 |
+#+end_table
+
+Studying this table, we notice that we receive significant prediction problems when the camera is even only \(\qty{15}{\degree}\) tilted wrt the runway direction.
+
+
+*** data :noexport:
+**** Features 1:2
+***** formatted
+***** raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.16814  -0.00283   0.0337371
+ 153.379     0.581112  3.26735
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.21947  0.0660953  -0.0285781
+ 151.425    3.4841      3.74225
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.5514   0.0548323   0.264447
+ 199.26    27.3165     14.0665
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -14.7415   0.364262   0.519558
+ 193.49    45.6259    22.877
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -9.21481   0.196593   0.484496
+ 217.494    56.7308    28.9801
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.4776   0.59367   0.808493
+ 211.487   66.3532   33.2873
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.9262  -0.565817  -0.535161
+ 205.019   70.5194    34.7356
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -12.3143   0.483048   1.00353
+ 181.907   75.8419    37.4242
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -11.1313  -2.99233   0.620182
+ 206.601   79.315    38.6841
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -5.26704   0.0479666   0.488847
+ 173.934    81.2017     40.707
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -10.9768  -1.02146  -0.351597
+ 169.441   81.738    41.6722
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.00435  -0.835736   0.265345
+ 157.637    84.242     41.5165
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.77991   0.841156   0.686087
+ 169.155    85.6169    42.5281
+**** Features 1:4
+***** formatted
+***** raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.19696  0.0075285  0.0502635
+ 100.454    0.495195   1.94139
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+   0.261094  0.0647815  0.0592448
+ 100.388     4.87517    3.37197
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.82626   0.564647  -0.155263
+ 111.925    27.8923    13.9433
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.194517  -0.244625  -0.0906993
+ 138.364     44.957     22.912
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.58071   0.0682961   0.0576568
+ 117.993    56.7076     27.9676
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -0.904429   0.698025   0.226501
+ 124.327     66.6036    32.681
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.62445   2.03755  -0.76615
+ 147.533    70.5756   35.8625
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.98871   0.558398   0.226711
+ 123.186    74.8716    37.5796
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -6.8241   0.0663825  -0.092881
+ 132.455   78.4469     39.1741
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.41516  -0.150595   0.0492371
+ 131.658    80.4602    40.1788
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -2.74761  -2.078    0.314863
+ 143.56     83.4171  41.075
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -1.03709   0.833214   0.00498697
+ 143.201    83.3268    41.8895
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  -3.57759  -1.05411  -0.455763
+ 126.379    83.2375   43.2943
+**** Features (:)
+***** formatted
+
+***** raw :noexport:
+[ Info: 0.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ 0.028292  0.0030881  -0.00489142
+ 3.62234   0.319877    0.327784
+[ Info: 5.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.0420827  -0.00742929  0.00329768
+  3.95995     0.335672    0.339709
+[ Info: 10.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.671178  -0.0376517  0.113909
+ 15.419      4.64131    1.24272
+[ Info: 15.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.388351   0.412988   0.215115
+ 43.1642    32.248     14.2915
+[ Info: 20.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.26043  -0.857926   0.145583
+ 62.2505   46.7632    21.1139
+[ Info: 25.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  1.57955   0.704326   0.137833
+ 71.9703   55.6119    27.2698
+[ Info: 30.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  2.89698  -0.613564   0.0935092
+ 77.0481   63.6783    29.8971
+[ Info: 35.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.0893006  -0.364597   0.558895
+ 89.7247     68.6814    31.3763
+[ Info: 40.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.500785  -1.02141  -0.837706
+ 81.3209    71.6772   35.4608
+[ Info: 45.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -1.72685  -1.02941  -0.971258
+ 86.6457   74.7806   36.6963
+[ Info: 50.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  3.38091  -2.73956   0.301559
+ 87.389    78.7439   37.4007
+[ Info: 55.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+ -0.015958   0.998094  -0.145212
+ 91.1766    78.1907    38.3517
+[ Info: 60.0°
+[ Info: [mean ; std] for x,y,z:
+2×3 Matrix{Float64}:
+  0.421176   0.171872   0.493875
+ 85.9156    80.2746    39.7789
+
+#+latex: \newpage
+** Further assumptions: Attitude prediction error <<sec:attitude-prediction-error>>
+
+In the previous section we explored the effects of having an attitude that is precisely known, but not pointing straight at the runway.
+In this section we consider the question what happens if we are facing the runway precisely, but falsely believe that we are rotated by a small amount.
+
+[[tbl:attitude-prediction-error]] provides the results for this setup.
+As we can see, around \(\qty{0.5}{\degree}\) attitude belief error already leads to position estimation errors close to the requirements.
+Keep in mind, this experiment also includes pixel position measurement noise (see the first column where there no attitude noise yet).
+Notice also that the alongtrack error stays nearly unaffected, unlike the crosstrack and height error.
+
+#+name: tbl:attitude-prediction-error
+#+caption: Standard position estimation error given a wrong belief about our attitude (which is actually dead straight), using only near features.
+#+attr_latex: :placement [!htpb]
+#+begin_table
+ | \sigma_angle |   0.0° |  0.01° |   0.1° |   0.3° |   0.5° |   1.0° |
+ |---------+--------+--------+--------+--------+--------+--------|
+ | \sigma_x | 146.39 | 148.52 | 144.93 | 149.27 | 150.55 | 150.22 |
+ | \sigma_y | 0.5724 | 0.8271 | 6.1943 | 17.536 | 30.030 | 58.797 |
+ | \sigma_z | 3.1291 | 3.1956 | 6.8751 | 16.831 | 29.688 | 57.163 |
+#+end_table
+
+#+latex: \noindent
+/Reproduce by running =experiment_with_attitude_noise()=./
+* Theoretical analysis
+
+* The PnP Problem and beyond the OpenCV implementation <<sec:pnp-problem>>
+In the previous chapter we have seen different possibilities for representing image features and how they relate to our current position estimate.
+However, it is not a trivial problem to recover a position estimate given the image features.
+
+Indeed, in general no exact solution exists, and instead a least-squares problem has to be solved iteratively to find the position that is the most consistent with the observations.
+Additional care has to be taken when selecting the specific solver, and when setting up the objective function.
+In the next pages, we will discuss how to set up the objective function, how to weight each term, how to deal with correlated noise, and which solver to choose.
+
+** Related work: OpenCV
+Before we dive in to the detail, let's first consider why simply using the OpenCV solver may not be sufficient.
+OpenCV offers a range of algorithms solving the "PnP Problem", i.e. the Perspective-from-n-Points, in particular
+- an iterative solver based on general point reprojections,
+- algebraic solvers building an exact correspondence,
+- several specialized iterative solvers when certain assumptions hold.
+
+However, all these solvers are not ideal for our scenario:
+1. We are trying to solve a simpler problem than the general PnP problem, as we already have the rotation given.
+2. We may have more points than the minimum required, which eliminates algebraic solutions.
+3. The PnP solver may only work with point correspondences, i.e. zeroth order features as described in [[sec:three-levels-of-representations]].
+4. The OpenCV implementation weighs all terms equally. I.e., the error in x-direction of the front left corners has the same weight as the error in y-direction of the back right corner.
+
+
+
+In the geometric analysis, we have held many factors constant and were able to compute analytic equations that way.
+However, when not all factors are controlled, this type of analysis can fall apart.
+This further becomes more difficult if we try to solve an over-determined problem.
+
+In the following we will consider the following thoughts:
+  + solving an overdetermined system in practice.
+  + sensitivity of the solution in an overdetermined system
+** Solving an overdetermined system in practice.
+Recovering the pose from N known points is generally called the PnP problem ([[https://en.wikipedia.org/wiki/Perspective-n-Point][Perspective-n-Point]]).
+Basically, given a pose guess, the known points are projected onto the camera and then compared to the measured points (assuming known association), typically using a simple squared loss in x- and y-direction.
+More advanced techniques exist, but the typical solution uses the Levenberg-Marquardt algorithm (a mix of first- and second-order optimization), or sometimes a damped Gauss-Newton method (only second order), to solve the resulting problem.[fn:1]
+Initial guesses may be provided or computed with the [[https://en.wikipedia.org/wiki/Direct_linear_transformation][DLT algorithm]] (as OpenCV does).
+
+
+Therefore, a simple implementation may look like this:
+#+begin_src julia
+function pnp_LM(world_pts::Vector{XYZ{Meters}},
+                pixel_locations::Vector{Point2{Pixels}},
+                pred_angles::Vector{Angle},
+                cam_rotation::Rotation{3};
+                initial_guess::XYZ{Meters} = XYZ(-100.0m, 0m, 30m),
+                )
+    N, M = length(pixel_locations), length(pred_angles)
+    w_points, w_angles = ones(N)/(N+M), ones(M)/(N+M)
+    loss(cam_position::XYZ{Meters}) = let
+        P = make_projector(cam_position, cam_rotation)
+        projected_points = P.(world_pts)
+        projected_angles = compute_angles(projected_points)
+        # compute possible derived properties, like enclosing angle, ...
+        return ( sum(w_points.*(projected_points .- pixel_locations).^2)
+               + sum(w_angles.*(projected_angles .- pred_angles).^2)     ) #  (ref:loss-eq)
+    end
+    sol = optimize(loss, initial_guess,
+                   LevenbergMarquadt())
+    return minimizer(sol)
+end
+#+end_src
+
+where
+
+#+begin_src julia
+function make_projector(cam_position::XYZ{Meters}, cam_rotation::Rotation{3};
+                        focal_length=25.0mm, pixel_size=0.00345mm/1px)
+    scale = focal_length / pixel_size
+    projector(pt::XYZ{Meters}) =
+        rel_pt::Point3{Meters} = cam_rotation'*(pt - cam_position)
+        proj::Point2{Pixels} = scale * 1/rel_pt[1] * Point2(rel_pt[2], rel_pt[3])  #  (ref:proj-eq)
+        return proj
+    end
+    return projector
+end
+#+end_src
+
+(Note the auto-vectorization syntax ~f.(vec)~ which applies ~f~ elementwise to each element of ~vec~.)
+
+Notice that we may include extra terms and/or weights in [[(loss-eq)]], e.g. weights on x vs y, angular terms, etc.
+The problem seems almost linear -- notice however the division in [[(proj-eq)]]. [fn:2]
+For the LM algorithm, we need the gradient and Hessian. Fortunately, if we use the right tools we can automatically construct them, e.g. using [[https://github.com/JuliaDiff/ForwardDiff.jl][~ForwardDiff.jl~]] or similar.
+
+*** Dealing with correlated measurements.
+\todo{Introduce multiplication with inverse covariance matrix -- explain connection to uncertainty quantification.}
+** Sensitivity of the solution of an overdetermined system.
+#+name: fig:simple-example
+#+caption: A simple example of runway observations \(\tilde{\alpha}, \tilde{x}'\) and \(\tilde{y}'\) and predictions \(\alpha(\theta), x'(\theta)\) and \(\tilde{y}')\) given the position estimate \(\theta\).
+#+attr_latex: :width 0.7\textwidth
+[[file:/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/simple-example.png]]
+Next we will investigate the question what happens when we aggregate solutions to sub-problems in a least-squares fashion.
+The motivation is as follows:
+Suppose that part of our pose estimation is done through an angular representation, and part through the near and far left runway corners.
+Let \(\theta\) denote our variable of interest, i.e. the position \(\theta = (x, y, z)\).
+Then, our objective function might look like
+\begin{equation}
+\min_\theta f(\theta)
+\end{equation}
+with
+#+name: eq:general-objective-fn
+\begin{equation}
+f(\theta) = w_1 \left(\alpha(\theta) - \tilde{\alpha}\right)^2 + w_2 \left(x'_{\rm near}(\theta) - \tilde{x}'_{\rm near}\right)^2 + w_3 \left(x'_{\rm far}(\theta) - \tilde{x}'_{\rm far}\right)^2
+\end{equation}
+where \(\alpha\) denotes the angle, $x'_i = \mathit{project}(x_i)$ the projected world coordinates, $\tilde{q}$ the estimate of any quantity $q$, and \(q(\theta)\) the simulated quantity \(q\) given the pose \(\theta\).
+An  illustration is provided in [[fig:simple-example]].
+
+In order to solve this system, we choose weights $w_i$ for each component.
+Should we set them equally? Do we need to tune them by hand? Or can we come up with a mathematical suggestion?
+To further motivate this question, we start by considering a few reasons why we can not set all weights equally.
+Then we derive
+
+*** Motivation
+We will briefly discuss three different perspectives on why weights need to be chosen carefully, and can in general not be set to be equal.
+
+First, an easy way to see that we can not choose all weights to be equal in [[eq:general-objective-fn]] is to consider the case where the angle $\alpha$ is measured in radians, and one where it is measured in degrees.
+To illustrate, let \((\alpha(\theta) - \tilde{\alpha}) = 0.1{\rm rad} \approx 5.7^\circ\).
+It is now easy to see that, despite both values representing the same measurement, if we ignoring the units when evaluating \(f(\theta)\) the representation in degrees has approximately \(57^2 = 3249\) times more relative weight then the first, and may thus dominate the the terms with \(w_2\) and \(w_3\).
+
+The observant reader will notice that this is an obvious problem given the lack of dimensional analysis.
+Indeed, when considering [[eq:general-objective-fn]] again, it seems clear that we should not add an angle to a distance in the first place -- as you would also not add \(100\) millimeters to \(100\) meters and expect a result with quantity \(200\).
+It therefore falls onto the factors \(w_i\) to contain the correct "conversion" such that all terms can be added sensibly.
+We will see that by setting the weights to the inverse squared derivative \(w_i = 1/\left(  \partial_\theta q(\theta) \right)^2\) we can stay consistent in dimensional analysis.
+
+A second argument can be made around uncertainties.
+Suppose we can predict one measurement with high certainty, say 0.1 units, and another one only with very low certainty, say 10 units (measured for example in pixel space, in degrees, etc).
+It seems clear that we should place a higher weight on the first measurement than on the second.
+But how much higher?[fn:3] We will see that under the Gaussian assumption, the weight will be exactly the inverse variance, which is directly related to the previous result (more on that later).
+
+A final, somewhat related argument considers the sensitivities of each term directly.
+Suppose we try to estimate \(\theta\) by measuring two related quantities --  \(q_1(\theta)\) and \(q_2(\theta)\) -- but \(q_1(\theta)\) is very sensitive to error in \(\theta\), i.e. \(\partial_\theta q(\theta)\) is large.
+If we then try to solve \(\min_\theta (q_1(\theta) - x_1)^2 + (q_2(\theta)-x_2)^2\) directly, the result will be dominated by \(q_1(\theta)\), even though it may not contain any more information than \(q_2(\theta)\).
+Yet again, the key lies in choosing weights as the inverse of the squared derivatives.
+
+Next, we present some mathematical analysis to underline each point.
+
+*** Dimensional analysis and a simple mathematical example
+*** Least-squares given uncertainty and the connection to the derivatives
+
+*** Sensitivity analysis
+Suppose that the predicted quantity \(q(\theta)\) is very sensitive to \(\theta\), i.e. \(\partial_\theta q(\theta)\) is large.
+Consider
+#+name: eq:simple-q-model
+\begin{equation}
+\min_\theta f(\theta) \text{ with }w_1(q_1(\theta) - x_1)^2 + w_2(q_2(\theta)-x_2)^2
+\end{equation}
+and let \(\theta_1 = [q_1]^{-1}(x_1)\) and similarly \(\theta_2\), where \([q_i]^{-1}\) denotes the function inverse, assuming it exists.
+Solving \(\partial_\theta f(\theta) = 0\) yields
+\[\begin{aligned}
+\partial_\theta f(\theta) &= 2\left[w_1 \partial_\theta q_1(\theta) \left( q_1(\theta) - x_1\right) + w_2 \delta_\theta q_2(\theta) \left( q_2(\theta) - x_2 \right) \right] = 0 \\
+&\Rightarrow -\frac{w_1 \partial_\theta q_1(\theta)}{w_2 \partial_\theta q_2(\theta)} \frac{\left(q_1(\theta) - x_1\right)}{\left(q_2(\theta) - x_2\right)} = 1.
+  \end{aligned} \]
+  If we now assume \(w_1 = w_1\) and \(\partial_\theta q_1(\theta) \gg \partial_\theta q_2(\theta) = C \cdot \partial_\theta q_1(\theta)\) with \(C=100\) we get
+  #+name: eq:c-frac-1
+  \begin{equation}
+  \frac{C}{1} \frac{\left(q_1(\theta) - x_1\right)}{\left(q_2(\theta) - x_2\right)} = 1,
+  \end{equation}
+  i.e. error in \(q_1(\theta)\) is weighted \(100\) times as much as error in \(q_2(\theta)\).
+  Further, since \(q_1(\theta)\) grows faster, we actually end up with something like \(C^2\).
+  To see this, consider simply \(q_1(\theta) = 100\ \theta\) and \(q_2(\theta) = \theta\).
+  Inserting this into [[eq:c-frac-1]] yields
+  \[\begin{aligned}
+  &\frac{100}{1}\frac{\left( 100\ \theta - x_1\right)}{\left(\phantom{10}1\ \theta - x_2 \right)} = 1 \\
+  \Rightarrow &\theta = \frac{100^2 \frac{x_1}{100} + 1^2 \frac{x_2}{1}}{100^2 + 1^2}
+  \end{aligned}\]
+  i.e. we interpolate between the two solutions \(x_1/100\) and \(x_2/1\) with weights \(w_1 = 100^2/(100^2+1^2)\) and \(w_2 = 1/(100^2+1^2)\).
+  (Note: We can easily obtain the same result by inserting our choices for \(q_1(\theta)\) and \(q_2(\theta)\) into [[eq:simple-q-model]], rewriting the equation as
+  \(
+  \min_\theta w_1 100^2 (\theta - \frac{x_1}{100})^2 + w_2 1^2 (\theta - \frac{x_2}{1})^2,
+  \)
+  and recalling our result from [[sec:simple-model]].)
+
+
+
+*** inv linear model,  <<sec:simple-model>>
+e.g. \(\min_\theta w_1(\theta - x_1)^2 + w_2(\theta-x_2)^2\).
+\[\begin{aligned}
+&&\partial_\theta f(\theta) &= 2 \left[ w_1 (\theta - x_1) + w_2 (\theta - x_2) \right] \overset{!}{=} 0 \\
+\Rightarrow&& (w_1 + w_2) \theta &= w_1 x_1 + w_2 x_2 \\
+\Rightarrow&& \hfill \theta &= \frac{1}{(w_1 + w_2)} (w_1 x_1 + w_2 x_2) & \\
+&&&= \tilde{w}_1 x_1 + \tilde{w}_2 x_2
+\end{aligned}\]
+with \(\tilde{w}_i = \frac{w_i}{w_1+w_2} \Rightarrow \tilde{w}_1 + \tilde{w}_2=1\).
+Then we can see that the solution interpolates exactly between the two individual solutions \(x_1\) and \(x_2\) according to the weights \(w_1\) and \(w_2\).
+
+*** TODO others
+- Warped linear model, e.g. \(\min_\theta w_1(c\cdot\theta - x_1)^2 + w_2(\theta-x_2)^2\).
+
+
+#+name: fig:gaussian-avg
+#+caption: Estimating \(\theta\) using two measurements with different uncertainties, modeled as Gaussians. \(\bar{x} = \frac{x_1+x_2}{2}\) and \(\hat{x} = \arg \max_{q(\theta)} p_1(q) * p_2(q)\).
+#+attr_latex: :width 0.6\textwidth
+[[file:/Users/romeovalentin/Documents/PNPSolve/notebooks/figs/two-gaussians.png]]
+- Model with uncertainties, e.g. $x_1 \sim \mathcal{N}(\mu_1, \sigma^2_1), x_2 \sim \mathcal{N}(\mu_2, \sigma^2_2)$.
+  #+name: eq:gaussian-is-just-inv-variance
+  \[  \begin{aligned}
+  \theta &=\arg \max_\theta \prod_i \mathcal{N}(x_i, \sigma^2_i) \\
+  &= \arg \max_\theta \log \prod_i \mathcal{N}(x_i, \sigma^2_i) \\
+  &= \arg \max_\theta \sum_i \frac{(\theta - x_i)^2}{\sigma^2_i}
+  \end{aligned}
+  \]
+  i.e. it just boils down to a regular LS problem with weights exactly the inverse of the variance!
+
+*** TODO using multiple highly correlated terms, e.g.
+\(
+\min_\theta f(\alpha_1, \alpha_2)
+\)
+where both \(\alpha_i\) are measuring something similar, in some sense.
+
+Some ideas
+- measurements are stat. independent given another value (?)
+- derivative of one value wrt the other is small
+- correlation is small
+- mutual information is small
+**** On Mutual Information
+Given observations, we can consider the empirical covariance matrix of two measurement quantities, which is directly related to the pearson correlation.
+The Pearson correlation can be understood as modeling the linear dependencies of the mutual information, whereas the Mutual Information models linear and non-linear dependencies.
+
+For us, that probably means we can start by consdering the linear dependencies only and then perhaps compare to the nonlinear one.
+
+For the linear dependencies, we can e.g. model the marginal Gaussians in a parametric way and then simply compute the MI analytically based on the standard deviations.
+
+
+** Choosing the weights in our objective function :noexport:
+#+latex: \newpage
+[[file:/Users/romeovalentin/Downloads/PXL_20230824_213025376.jpg]]
+#+latex: \newpage
+
+* Appendix
+** Correlations <<sec:correlation-matrix>>
+Correlation values (in service volume):
+\[\mathit{corr}(\begin{bmatrix}x \\ y \end{bmatrix}, \begin{bmatrix}x \\ y \end{bmatrix}) =
+% \frac{\mathit{cov}(\begin{bmatrix}x \\ y \end{bmatrix}, \begin{bmatrix}x \\ y \end{bmatrix})}{\sigma^2} =
+\left[\begin{array}{cccc|cccc}
+  1.0 &  0.92 &  0.98 &  0.93 & -0.05 & -0.05 & -0.04 & -0.04  \\
+  0.92 &  1.0 &  0.91 &  0.95 & -0.18 & -0.19 & -0.18 & -0.19 \\
+  0.98 &  0.91 &  1.0 &  0.93 & -0.04 & -0.05 & -0.03 & -0.03 \\
+  0.93 &  0.95 &  0.93 &  1.0 &  -0.2 &  -0.2 &  -0.19 & -0.2 \\ \hline
+ -0.05 & -0.18 & -0.04 & -0.2 &  1.0 &  1.0 &  1.0 &  1.0 \\
+ -0.05 & -0.19 & -0.05 & -0.2 &  1.0 &  1.0 &  0.99 &  1.0 \\
+ -0.04 & -0.18 & -0.03 & -0.19 &  1.0 &  0.99 &  1.0 &  1.0 \\
+ -0.04 & -0.19 & -0.03 & -0.2 &  1.0 &  1.0 &  1.0 &  1.0
+\end{array}\right] \]
+Notice that all x and all y values are extermely correlated, with a factor of almost 1 (!), and the x/y correlations are almost uncorrelated, although they do seem to have a persistent small negative correlation.
+
+[[fig:error-correlations-extreme]] shows a graphic of the error correlations of the extreme service volume only.
+Note that it looks similar to the one provided in the report above, even though comparitively few samples were used for creation.
+
+#+name: fig:error-correlations-extreme
+#+caption: Error correlations only for samples in the extreme service volume.
+#+begin_figure
+file:figs/error_correlations_extreme.pdf
+#+end_figure
+
+** Misaligned Attitude, more tables <<sec:appendix-misaligned-attitude>>
+
+#+caption: Features: (1:2)
+#+begin_table
+ | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+ |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+ | \sigma_x     | 153.3 | 151.4 | 199.2 | 193.4 | 217.4 | 211.4 | 205.0 | 181.9 | 206.6 | 173.9 |
+ | \sigma_y     | 0.581 | 3.484 | 27.31 | 45.62 | 56.73 | 66.35 | 70.51 | 75.84 | 79.31 | 81.20 |
+ | \sigma_z     | 3.267 | 3.742 | 14.06 | 22.87 | 28.98 | 33.28 | 34.73 | 37.42 | 38.68 | 40.70 |
+#+end_table
+
+#+caption: Features: (1:4)
+#+begin_table
+#+latex: \centering
+| \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
+|--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
+| \sigma_x     | 100.4 | 100.3 | 111.9 | 138.3 | 117.9 | 124.3 | 147.5 | 123.1 | 132.4 | 131.6 |
+| \sigma_y     | 0.495 | 4.875 | 27.89 | 44.95 | 56.70 | 66.60 | 70.57 | 74.87 | 78.44 | 80.46 |
+| \sigma_z     | 1.941 | 3.371 | 13.94 | 22.91 | 27.96 | 32.68 | 35.86 | 37.57 | 39.17 | 40.17 |
+#+end_table
+
+** Simulation study
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:2), feature_str="1:2"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:4), feature_str="1:4"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=4), savefig=true)
+** Reproducing the results
+*** Barplots for estimation errors  <<sec:reproducing-barplots>>
+** Derivation of \(\frac{\partial x'}{\partial x}\) <<sec:dx-dxp-derivation>>
+By looking from the top onto the situation, we can establish
+\[\begin{aligned}
+&\frac{x^2 + z^2}{y^2} = \frac{f^2 + x'^2}{y'^2} \\
+ \Rightarrow\ &x^2 = \frac{y^2}{y'^2}(f^2 + x'^2) - z^2.
+\end{aligned}\]
+Taking the square root, differentiating by \(x'\) and inverting the fraction yields the result.
+The result for \(\frac{\partial x'}{\partial z}\) follows similarly.
+
+** Regression vs classification problems
+** Connection to uncertainty quantification
+** Predicting Order 1 measurements and computing Order 2/3 measurements from them.
+** Representations trained using labels only from position
+
+** The three stages  <<sec:the-three-stages>>
+The current system is structured as follows:
+- Stage one: :: Stage one uses a image detection algorithm to find a rough crop of the runway in the image (which may be empty), i.e. has the type signature
+  \[
+  S_1: [0, 1]^{W\times H} \rightarrow [0, 1]^{w \times h} \cup \emptyset
+  \]
+  where \((w, h) < (W, H)\).
+- Stage two: :: If a crop was found in stage one, stage two processes this subimage to extract a representation of one or multiple runways in the image, i.e.
+  \[
+  S_2: [0, 1]^{w \times h} \rightarrow \mathcal{R}
+  \]
+  A simple representation may for example be the pixel indices of the near left and right threshold corners, i.e.
+  \[
+  \mathcal{R} = \left( I_x \times I_y \right)^2
+  \]
+  where \(I_x = \{1..w\}\) and \(I_y = \{1..h\}\).
+  Other representations may for example contain different points or angles.
+- Stage three: :: Finally, stage three recovers the camera position that is most consistent with the measured representation, i.e.
+  \[
+  S_3: \mathcal{R} \rightarrow \mathbb{R}^3, z \mapsto \theta(z).
+  \]
+  This typically happens by finding a position \(\theta\) that minimizes a suitable loss function given the measured representation, i.e.
+  \[
+  \theta = \arg \min_{\theta}\ l(\theta, z)
+  \]
+  which may sometimes be derived from a probabilistic statement like
+  \[
+  \theta = \arg \max_{\theta} p(\theta \mid z).
+  \]
+
+* Footnotes
+[fn:file1_2]Notice that this problem is directly related to the condition number of a 2x2 matrix, which is roughly speaking poorly conditioned when the column vectors (i.e. ray directions) are almost parallel and singular if they are exactly parallel.
+
+[fn:file1_1]We find that the basic optimization is relatively robust to initialization, but becomes more sensitive when more measurements, like angles, are added.
+
+[fn:5] Even though the problem is overdetermined, there still may be (and are) multiple local minima, due to the nonlinearity of the projection and squared loss. However, if sufficient care is taken with the optimization algorithm and initial guess, we have reasonable hopes to converge to the "correct" \(\theta\).
+[fn:4] The question how to integrate uncertainty or errors in the orientation is an interesting one but will not be discussed in this report.
+
+[fn:1] [[https://docs.opencv.org/4.x/d5/d1f/calib3d_solvePnP.html][The OpenCV website]] has a good overview of other methods.
+[fn:2] I believe there might be some tricks similar to the [[https://en.wikipedia.org/wiki/Direct_linear_transformation#Example][DLT algorithm]] that let us solve the problem using Moore-Penrose pseudoinverse. However, this doesn't work anymore if we e.g. also consider angles.
+[fn:3] There is an interesting duality when measuring the location of things in pixel space: Objects that are closer are also larger, and may have therefore have a larger uncertainty measured in pixels than objects far away, even though they are easier to detect!
+The connection then comes through the sensitivity analysis, given that the sensitivity of the pose to errors in pixel space is typically also lower for large objects, so it cancels out.

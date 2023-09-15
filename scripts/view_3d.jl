@@ -345,15 +345,15 @@ perturbed_pose_estimates = lift(
         end
     sample_angular_noise() = σ_angle * 1rad * randn(length(angles))
     sample_pos_noise() = [100;100;50] .* randn(3) .* 1m
-    sols = ThreadsX.collect(
-    # sols = collect(
+    collect_fn = ThreadsX.collect # or regular collect collect
+    sols = collect_fn(
         LsqPnP.pnp(
             runway_corners,
             (projected_points .+ sample_measurement_noise())[corner_feature_mask],
             corner_feature_mask,
             # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
-            angles=(feature_toggles[3] ? angles + sample_angular_noise() * noise_toggles[3] : ComponentVector(β=[], γ = [])),
+            angles=(feature_toggles[3] ? angles + sample_angular_noise() * noise_toggles[3] : ComponentVector(β=typeof(1.0rad)[], γ = typeof(1.0rad)[])),
             initial_guess = cam_pose_gt.translation + sample_pos_noise(),
             components=use_xy,
         ) for _ = 1:num_pose_est
@@ -390,16 +390,17 @@ end
 on(events(scene).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         plt, i = pick(scene)
-        # @show plt, plt==pose_samples, i
+        @show plt, plt==pose_samples, i
         if !isnothing(plt) && plt == pose_samples
             @info opt_traces[i]
             pose_guess[] =
-                AffineMap(R_t_true, XYZ{Meters}(Optim.minimizer(opt_traces[i]) .* 1m))
+                AffineMap(R_t_true, XYZ{Meters}(Optim.minimizer(opt_traces[i])))
         end
     end
     return Consume(false)
 end
-# PNPSolve.make_error_bars_plot(rhs_grid[3, 1])
+# TODO: Reactivate this. There's some bugs though to fix first...
+# PNPSolve.make_error_bars_plot(rhs_grid[3, 1], C_t_true, R_t_true, opt_traces)
 
 
 # display(GLMakie.Screen(), make_fig_pnp_obj());
