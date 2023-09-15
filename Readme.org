@@ -16,14 +16,18 @@ Therefore, we just need to install julia and instantiate the dependencies.
 4. Now you can run either ~julia --project scripts/run_all_experiments.jl~ from the shell, or ~include("./scripts/run_all_experiments.jl")~ from within the REPL (will be faster when you want to re-run since it skips recompiling some parts).
    The same goes for the simulator script at ~./scripts/view_3d.jl~.
 ** Running the notebooks.
+
 <details open>
   <summary>Details on running the Pluto Notebooks...</summary>
+
 There's also some Pluto notebooks located in the ~notebooks~ directory.
 Some of the notebooks have their own dependency management, some don't (a bit messy atm).
 Either way, start by installing Pluto into your "root" environment, i.e. just run ~julia~ (without ~--project~) and run ~import Pkg; Pkg.add("Pluto"); Pluto.run()~ (after you can also just run ~julia -E "import Pluto; Pluto.run()" from the command line).
 The notebook server will open in your browser, and you can navigate to the notebook of choice.
 It will automatically install the dependencies.
+
 <details close>
+
 
 * Used and provided libraries.
 We use
