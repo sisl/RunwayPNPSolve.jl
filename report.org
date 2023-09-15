@@ -1,5 +1,4 @@
-#+title: Pose Estimation Sensitivity Analysis: Beyond Point Associations and PnP
-#+title: Simulation Study: Empirical Effects Of Measurement Errors On Position Estimation
+#+title: Pose Estimation Simulation Study and Sensitivity Analysis: Beyond Simple Point Associations and PnP
 #+author: Romeo Valentin (romeov@stanford.edu)
 #+email: romeo.valentin.int@airbus-sv.com or romeov@stanford.edu
 #+date: Summer 2023
@@ -9,7 +8,6 @@
 #+LATEX_HEADER: \definecolor{bg}{rgb}{0.95,0.95,0.95}
 #+LATEX_HEADER: \usepackage{minted}
 #+LATEX_HEADER: \usepackage{amsmath}
-#+LATEX_HEADER: \usepackage{cleveref}
 #+LATEX_HEADER: \usepackage{siunitx}
 #+LATEX_HEADER: \usepackage{pdfpages}
 #+LATEX_HEADER: \newcommand{\todo}[1]{\textcolor{red}{TODO (Romeo): #1}}
@@ -19,21 +17,15 @@
 #+options: toc:nil
 
 #+begin_abstract
-- we currently only observe front two corners.
-- what's the real error distribution in x/y? are the errors correlated?
-- how do errors in x/y influence our pose estimate?
-- how does it change with alongtrack distance? height? crosstrack error?
-- how do error correlations influence our pose estimate?
-- how do errors in rotation influence our pose estimate?
-- can we improve by taking four corners?
-- can we improve by taking edge angles?
-- can we improve by considering other runways?
+This repository contains the libraries, experiments, and reports developed during the 2023 Summer internship by Romeo Valentin (romeov@stanford.edu or romeo.valentin.int@airbus-sv.com).
+This report summarizes the findings made during my 2023 Summer internship.
+We investigate the VNV pipeline wrt to the question whether the current runway representation is sensible and leads to numerically stable position estimation results.
+We use a simulation study as well as theoretical analysis to discuss the merits and drawbacks of the current representation.
+In summary, we find that if our pixel prediction error does not exceed a standard deviation of 1 pixel, we are generally within spec, and are robust to attitude changes and small amounts of noise in the attitude estimation.
+We provide evidence that currently the system does stay within this 1 pixel limit the majority of the time; however it remains to be seen whether this performance also holds in more difficult conditions like night scenarios or given occlusion.
 #+end_abstract
 
 * Introduction
-** Related work?
-** Contributions?
-* Introduction2
 The goal of the vision pipeline is to provide a pose estimate of the airplane when approaching a runway.
 To this end, the system must first try to find the runway, which may only occupy a small fraction of the total image.
 Then, the system must extract useful image features of the runway, which may be matched up with the runway width, length, etc retrieved from a database.
@@ -41,6 +33,8 @@ Finally, the image features are combined to produce a pose estimate at each fram
 
 In this report we will focus on the second and third step of this process.
 When designing these system, many design decisions come up, including how to design a computer vision pipeline to extract image features, what image features are useful, and how to robustify the system against small errors.
+
+The code and experiments are all provided at \url{https://github.com/airbus-wayfinder/PNPSolve.jl}.
 
 ** Overview of the current approach
 First, let's briefly review how the current implementation functions.
@@ -64,6 +58,7 @@ Specifically, the service volume is currently defined as
 ** Contributions of this work
 Given the described approach, several questions arise naturally, which may include
 - How does our pose estimate change in the presence of prediction errors? How does this relate to the "allowed" pose estimate errors?
+- What is the distribution of the "real" prediction errors? Are we already "precise enough"? How much room for improvment is there?
 - Can we reduce the impact of prediction errors by using different or more features?
 - Can we improve our estimate by using information from multiple runways?
 - Can we improve on the OpenCV PNP formulation?
@@ -77,7 +72,7 @@ Throughout this report we will give insights to all of these questions and will 
 - explanation
 - pixel error distribution
 - numerical results
-** Motivation
+** Motivation :noexport:
 We have found that the representation of the runway in the image space is crucial to the accuracy of the system.
 Indeed, the "straight-forward" representation of trying to predict near/far runway corners and recovering the pose leads
 to errors of ~150m alongtrack per pixel error.
@@ -91,161 +86,32 @@ We start by investigating three approaches:
 1. Estimating the near-runway-width in pixel space, and associating with the known runway width.
 2. Estimating the runway length in pixel space, and associating with the known runway width.
 3. Estimating the angle between the sidelines.
-** Related work
-* A first motivating example
-We begin the discussion by analyzing the PnP algorithm for a specific runway and the simplest choice of feature representation: predicting the pixel coordinates of the near runway corners.
-We will explore how we can analyze the algorithms sensitivity to errors, and what happens when we introduce additional features to the representation, namely the far corners, and corners from other runways.
-We will see that by default, the algorithm performs somewhat poorly in particular in alongtrack direction, and also does not improve by adding the features.
-We will discuss what can be done for this specific case, and then discuss a more general setting where we consider a range of different parametrizations and their sensitivities.
+** Related work :noexport:
+* Measurement Error Distribution and Correlations  <<sec:realmeasurementerrors>>
+In order to estimate the effects of measurement errors on the downstream performance, we first want to analyze how large the measurement errors are in practice.
+In theory, this is straightforward -- we run the ML model on a bunch of samples, and compare the ML predictions with the labels.
 
-** Localization on the Albuquerque runway.  <<sec:localization-kabq>>
-#+name: fig:KABQ
-#+attr_latex: :width 1.0\textwidth
-#+attr_org: :width 200px
-[[file:../SensitivityReport/figs/KABQ.png]]
-# TODO (Romeo): Insert Tyler picture.
-Let's start by considering the localization problem on the Albuquerque runway (KABQ).
-KABQ has three different runways, which are oriented towards north-east, south-east, and east respectively.
-For now we will assume that we are located south-west of the airport, approaching the north-east facing runway.
-This runway has length \(\qty{3000}{\meter}\) and width \(\qty{65}{\meter}\).
-We define the coordinate system as in the MSVP: it is centered in the middle of the runway's threshold line, with the x-axis aligned with the alongtrack direction, the y-axis pointing along the threshold line to the left, and the z-axis pointing up.
+Unfortunately, the results look very poor upon first inspection, with a standard error of about 10 pixels for the various predictions.
+However, we get significantly better results when comparing the ML predictions only to the hand-labeled labels.
 
-In order to understand the safety-properties of our algorithm, we want to explore some worst-case properties.
-Therefore, we will position our aircraft/camera as far and low as "possible" (as given by the service volume); however, we will center it and align it perfectly for now.
-Let \(\theta\) denote the position and \(R\) the rotation matrix (Euler notation), then we have
-\[
-\theta = \begin{bmatrix} \qty{-6000}{\meter} \\ \qty{0}{\meter} \\ \qty{126}{\meter} \end{bmatrix}\
-\text{and} \
-R = I_3.
-\]
+The procedure is therefore as follows:
+1. We collect the most recent VNV results;
+2. we filter only for samples that have hand-labeled labels;
+3. we filter for only samples that are in the service volume specified by the MPVS. We may optionally filter for "extreme" samples too (see below).
+4. we plot the distributions and correlations of prediction errors (in pixel space).
 
-We will now consider the real locations and projections of the front two corners.
-For this, let
-\[
-p_{n,l}(\theta) = \begin{bmatrix}
-  x_{n,l}(\theta) \\
-  y_{n,l}(\theta) \\
-  z_{n,l}(\theta)
-\end{bmatrix} = \begin{bmatrix}
-  \qty{6000}{\meter} \\
-  \qty{0}{\meter} \\
-  \qty{-61}{\meter}
-\end{bmatrix}
-\]
-denote the /near, left/ (index \((n,l)\)) threshold corner in camera perspective, and let
-\[
-p'_{n,l} = \begin{bmatrix}
-  x'_{n,l} \\
-  y'_{n,l}
-\end{bmatrix}\]
-denote the projections of the corner onto the image plane, using the standard pinhole camera model with focal length \(f = \qty{35}{\milli\meter}\).
-(Here, \(x'\) points up in the camera image, and \(y'\) points left.)
-Specifically, let's consider \(\tilde{p}'_{n,l}\) as the measured (and possibly erroneous) corner positions estimates in the image as determined by the computer vision algorithm, and \(p'_{n,l}(\theta)\) as the reprojection of the known corner location given a camera position estimate \(\theta\).
-Then we can try to find our pose estimate by solving
-#+name: eq:motivation-lsq
-\begin{equation}
-\theta = \arg \min_\theta \sum_{\rho \in \{l,r\}} \left(\tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta)\right)^2 + \left(\tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta)\right)^2
-\end{equation}
-using an iterative solver and a reasonable initial guess.
-Notice that [[eq:motivation-lsq]] contains four data points (\(\tilde{x}'_{n,l}, \tilde{x}'_{n,r}, \tilde{y}'_{n,l}, \tilde{y}'_{n,r}\)) for three variables (\(\theta_1, \theta_2, \theta_3\)), i.e. we already have an overdetermined problem[fn:5].
+We define the "extreme" service volume as follows:
+#+begin_src julia
+in_extreme_service_volume(row) =
+  row.gt_translation_x in (-6000m .. -5500m) ||
+  abs(row.horizontal_angle) in 2°..3° ||
+  row.vertical_angle in 1.2°..2.0°
+#+end_src
+Filtering for hand-labeled data reduces us to about 5\% of the data (I think?).
+Further filtering for the service volume leaves us with 1332 samples.
+Finally, further filtering for the extreme service volume (where "extreme" only needs to be satisfied by one property at a time) leaves us with only 105 samples.
+Keep this in mind when interpreting the following results.
 
-In order to analyze this equation further, we denote the loss function as \(l(\theta)\) and set the derivative to zero, i.e. \(\nabla_\theta l(\theta) \overset{!}{=} \vec{0}\).
-Then we get
-\begin{equation}
-\nabla_\theta l(\theta) = \sum_{\rho \in \{l, r\}}  \left( \tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta) \right) (- \frac{\partial x'_{n,\rho}(\theta)}{\partial\theta}) + \left( \tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta) \right) (- \frac{\partial y'_{n,\rho}(\theta)}{\partial\theta}) \overset{!}{=} 0.
-\end{equation}
-Interestingly, we can see that the quantities \(q\) (where \(q = x'_{n,\rho}\) or \(q = y'_{n,\rho}\)) are minimized "more strongly" if \(\frac{\partial q(\theta)}{\partial \theta}\) is large.
-Another perspective on this observation is that \(\frac{\partial q(\theta)}{\partial \theta_i}\) determines how much the difference \(\left( \tilde{q} - q(\theta) \right)\) influences the pose coordinate \(\theta_i\).
-(Recall that \(\frac{\partial q(\theta)}{\partial \theta}\) is a three dimensional vector with one entry for each \(\theta_i\).)
-
-Further, we notice that if \(q\) is very sensitive to \(\theta\), minimizing \((\tilde{q} - q(\theta)\) will have a larger effect on \(\theta\) than if \(q\) is not very sensitive -- again directly linked through \(\frac{\partial q(\theta)}{\partial \theta}\).
-Therefore, it turns out that we are placing an implicit "importance weights" of how much influence a given quantity has on \(\theta\) where the importance weight is equal to \(\left(\frac{\partial q(\theta)}{\partial \theta}\right)^2\).
-
-It seems therefore natural to consider the partial derivatives directly to understand each components influence on the final solution.
-This will also help us understand what happens when we add more image features.
-
-
-** Computing partial derivatives.
-We wish to compute the partial derivatives \(\frac{\partial q_i}{\partial \theta_j}\) for the quantities and position coordinates introduced above.
-Unfortunately, the relation between \(q_i\) and \(\theta_j\) can become quite complicated, especially when considering the general case with arbitrary rotations and positions.
-However, we are able to establish analytic relationships without too much struggle when considering positions that have no crosstrack offset and straight orientation.
-(We will discuss later what happens when these assumptions are violated.)
-
-\todo{I can probably move this part to the appendix or so...}
-Before we get started, let's recall one important mathematical theorem -- The Inverse Function Theorem -- which roughly states that for bijective functions \(q(\theta)\) we have \(\frac{\partial q(\theta)}{\partial \theta} = \frac{1}{\frac{\partial \theta}{\partial q(\theta)}}\) (see e.g. Wikipedia).
-
-Let us again consider the position and orientation introduced in [[sec:localization-kabq]].
-In this setting, we first establish relations between \(x'\) and the different \(\theta_i \in \{x, y , z\}\) using
-\[
-\frac{x'}{f} = \frac{z}{x}.
-\]
-Using this simple relation, we can find
-\[
-\frac{\partial x'}{\partial x} = -\frac{fz}{x^2}
-\]
-and
-\[
-\frac{\partial x'}{\partial z} = -\frac{f}{x}.
-\]
-We further notice that \(x'\) and \(y\) are independent.
-
-We can do something similar for \(y'\), although the equations are more complicated (see [[sec:dx-dxp-derivation]]).
-All together, we get the following Jacobi matrix:
-#+name: eq:jacobian-1
-\begin{equation}\begin{aligned}
-\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
--\frac{fz}{x^2} & 0 & -\frac{f}{x} \\ \\
--\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - z^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2} & \sqrt{\frac{x'^2 + f^2}{x^2 + z^2}}&
--\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - x^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2}
-\end{bmatrix} \\ \vspace{0.5cm} \\
-&= \begin{bmatrix}
-\num{-1.225e-7} & 0 & \num{5.833e-6} \\ \\
-\num{-2.963e-8} & \num{5.835e-6} & \num{-6.224e-10}
-\end{bmatrix}.
-\end{aligned}
-\end{equation}
-(Note that \(\frac{\partial x_{n,l}}{\partial \theta_j} = \frac{\partial x_{n,r}}{\partial \theta_j}\) etc, therefore the full matrix would be just twice the printed matrix stacked).
-
-If we recall again that these terms build an implicit weight on how strongly each term is minimized, we can see that \(\theta_1 = x\) is mostly minimized through \(x'\), and similar for \(\theta_3 = z\).
-Interestingly though, \(\frac{\partial z}{\partial x'}\) is roughly five times larger than \(\frac{\partial x}{\partial x'}\).
-This means in cases where \(x\) and \(z\) are not consistent, the optimization algorithm places a much higher weight on minimizing the consistency error for \(z\).
-In [[sec:pnp-problem]] we will go into more detail how such effects can be circumvented.
-
-Using the inverse of the derived partial derivatives, we can also make some statements about the magnitude of the errors that may be introduced given some pixel error.
-Recall that by the Inverse Function Theorem we have \(\frac{\partial \theta_j}{\partial q_i} = \frac{1}{\frac{\partial q_i}{\partial \theta_j}}\) and that \(\Delta \theta_j \approx \frac{\partial \theta_j}{\partial q_i} \cdot \Delta q_i\).
-For now, let us assume that we have one pixel of error, and let the pixel size be \(\qty{0.00345}{\milli\meter}\).
-Then, e.g. the error introduced to our estimate for \(x\) through \(y'\) can be up to \(\qty{126}{\meter}\).
-\todo{Have to think a bit more about how the potential errors interact with the implicit weights...}
-
-Note that this is roughly consistent with our experimental numerical results, that show that for one pixel of measurement error we get about \(\qty{120}{\meter}\) of alongtrack estimation error.
-
-** Beyond near corners.
-Now that we have seen how to analyze the scenario when measuring the locations of the near corners, let's consider what would happen if we take into account the far corners as well.
-Indeed we can simply compute the same Jacobian as in [[eq:jacobian-1]] and replace \(x\) by \(x + \Delta x\).
-This yields
-#+name: eq:jacobian-1
-\begin{equation}\begin{aligned}
-\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
-\num{-5.444e-8} & 0 & \num{3.888e-6} \\ \\
-\num{-1.317e-8} & \num{3.889e-6} & \num{-9.822e-9}
-\end{bmatrix}.
-\end{aligned}
-\end{equation}
-\todo{I have to think a bit more about what this implies and how this matches up with the observation I've made in the numerical simulations}.
-\todo{Add numerical results.}
-** Error correlations and the implications
-#+name: fig:error-correlations
-#+caption: \todo{Explain this plot and the implications. Refer to figures in next section.}
-#+attr_latex: :width \textwidth
-#+attr_org: :width 300
-[[file:../SensitivityReport/figs/correlations.png]]
-
-* Measurement Error Distribution and Correlations
-/The results in this section may be reproduced by the notebook located at https://github.com/airbus-wayfinder/PNPSolve.jl/blob/main/notebooks/error_distribution.jl
-using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_with_manual_Q3_pre_release.csv=./
-
-- Distribution full service volume (1332 samples)
-- Distribution extreme service volume (105 samples)
 #+name: fig:measurement-error-distributions
 #+caption: Empirical error distributions of prediction location of the different runway corners.
 #+begin_figure
@@ -259,10 +125,9 @@ using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_
 #+end_subcaptionblock
 #+end_figure
 
-** Interlude: Normal or Cauchy? :noexport:
-[[file:figs/normal_vs_cauchy.pdf]]
-- \(\mathcal{N}\left(\mu==-0.58, \sigma=1.14\right)\)
-- \(\mathit{Cauchy}\left(\mu=-0.67, \sigma=0.78\right)\)
+[[fig:measurement-error-distributions]] shows the distribution of measurement errors for the four runway corners, in x and y direction respectively.
+We can see that the error distribution is relatively small, and can be decently approximated by a standard Normal distribution.
+We note however that it will be important to generate similar plots for data that has worse conditions, e.g. in the night, cloudy weather, etc.
 
 ** Correlations <<sec:error-correlations>>
 We can also wonder if the errors are correlated. For example, when we are predicting the near left corner too far to the right, do we also predict the far left corner too far to the right?
@@ -270,10 +135,17 @@ What about relations between left-right and up-down?
 In [[fig:error-correlations]] we see that there is indeed a strong correlation between all for corners, such that all x predictions are correlated, and all y predictions are correlated; however x and y do not seem to be correlated.
 
 #+name: fig:error-correlations
+#+caption: Error correlations for all samples in the service volume. We see that x values and y values are strongly correlated, however there's no strong correlation between x and y.
 #+begin_figure
 file:figs/error_correlations.pdf
-\caption{Error correlations for all samples in the service volume.}
 #+end_figure
+
+The full correlation matrix and the correlation plot for data on the extremes of the service volume are provided in [[sec:correlation-matrix]].
+
+** Interlude: Normal or Cauchy? :noexport:
+[[file:figs/normal_vs_cauchy.pdf]]
+- \(\mathcal{N}\left(\mu==-0.58, \sigma=1.14\right)\)
+- \(\mathit{Cauchy}\left(\mu=-0.67, \sigma=0.78\right)\)
 
 ** Conclusion
 For the further studies, we will proceed with the assumption that errors are sampled from a zero-mean Gaussian with one pixel of standard deviation, which seems approximately justified.
@@ -283,39 +155,64 @@ We do note, however, that a Gaussian distribution may underestimate the "heavy t
 In other words, the following results may be overly optimistic.
 
 * Simulation study
-** Simulation
-- we retrieve real runway data from a database (=2307 A3 Reference Data_v2.xlsx=).
-- our default case will be KABQ, \([\qty{-6000}{m}, \qty{0}{m}, \qty{1.2}{\degree}]\)
-- we solve the problem similar to how opencv solves it: given known 3D datapoints, and assuming a pose, we project the 3D datapoints onto the screen and compare with the actual measurements.
-- then we use an optimization method to minimize the squared sum of errors in x and y direcetion (screen coordinates).
-- specifically, we use the Levenberg-Marquardt algorithm (same as OpenCV) provided by LsqFit.jl.
-  We also tried other algorithms, but generally observed worse performance, specifically when other measurements like angles are also taken into account.
+In this section we will introduce details and results of our empirical simulation study.
+The effects of various forms of misalignment, measurement errors, and modeling difficulties are hard to analyze holistically (although we try in [[sec:theoretical-analysis]]).
+However, it is relatively straightforward to set up a simulation that processes hypothetical scenarios by
+1. providing runway and aircraft position,
+2. simulating measurement noise,
+3. retrieving the pose estimate by solving the PnP problem, and
+4. repeating this experiment numerically many times.
+Note that here "measurement" refers to the Neural Network that predicts the location of features in the image plane.
 
-- Using this simulation allowed us to simulate different error distributions, airplane positions and orientations, and runway setups and approaches.
-- There also has been some work on processing uncertainty estimates, although this will not be included in this report.
-** We study the effects of considering the following perturbations and features:
-- near corners, near&far corners, corners from other runways
-- sideline angles
-- non-straight approach attitude
-- error in attitude estimation
-- consistency across different runways (KABQ, KSFO, ...)
+In the next sections, we will first briefly explore how the simulation is set up, and then investigate the effects of
+- using near corners, near&far corners, corners from other runways;
+- using sideline angles as an additional feature;
+- considering correlated noise in the measurements;
+- considering a non-straight approach attitude;
+- the effects of error in attitude estimation; and
+- consistency across different runways (KABQ, KSFO, ...).
+
+#+latex: \noindent
+*A note on reproducibility:*
+/We put significant effort into providing reproducible results and figures.
+The code to reproduce the figures should be fully contained in the ~PNPSolve.jl~ project on the Wayfinder github project.
+Instructions to run the code are provided in the Readme./
 
 ** Baseline setup:
-Our default case will be the runway KABQ (Albuquerque), positioned at an alongtrack distance of (negative) \(\qty{6000}{\meter}\), horizontally centered (i.e. no crosstrack error), and with a vertical angle of \(\qty{1.2}{\degree}\).
-  Note that the crosstrack and height values are chosen such that they lie on the extreme of the service boundary.
+#+name: fig:KABQ
+#+attr_latex: :width 0.4\textwidth
+#+attr_org: :width 200px
 
-Estimation using near two corners, equal weighting in x/y direction.
+[[file:../SensitivityReport/figs/KABQ.png]]
+For the simulation, we use the spatial data of real runways, which we retrieve from a database (=2307 A3 Reference Data_v2.xlsx=).
+Our baseline case will be the runway KABQ (Albuquerque), with the aircraft positioned at an alongtrack distance of (negative) \(\qty{6000}{\meter}\), horizontally centered (i.e. no crosstrack error), and with a vertical angle of \(\qty{1.2}{\degree}\).
+A picture of KABQ is provided in [[fig:KABQ]].
+Note that the crosstrack and height values are chosen such that they lie on the extreme of the service boundary.
+The attitude is facing straight forward at the runway (no pitch), and is assumed to be precisely known.
+
+We start by using only near two corners for the position estimation, with equal weighting in x/y direction.
 Measurement errors are sampled by adding zero-mean Gaussian noise with one pixel of standard deviation.
 (This is roughly consistent with the real error distribution in decent conditions, see [[sec:realmeasurementerrors]].)
-We start with an initial guess that is set to the true location plus three samples from a zero-mean Gaussian with 50 meters of standard deviation.[fn:file1_1]
+
+# our default case will be KABQ, \([\qty{-6000}{m}, \qty{0}{m}, \qty{1.2}{\degree}]\)
+The optimization problem is initialized with an initial guess that is set to the true location plus three samples from a zero-mean Gaussian with 50 meters of standard deviation.[fn:file1_1]
+We solve the problem similar to how opencv solves it: given known 3D datapoints, and assuming a pose, we project the 3D datapoints onto the screen and compare with the actual measurements.
+Then we use an optimization method to minimize the squared sum of errors in x and y direcetion (screen coordinates).
+Specifically, we use the Levenberg-Marquardt algorithm (same as OpenCV) provided by LsqFit.jl.
+We also tried other algorithms, but generally observed worse performance, specifically when other measurements like angles are also taken into account.
+
+# - Using this simulation allowed us to simulate different error distributions, airplane positions and orientations, and runway setups and approaches.
+# - There also has been some work on processing uncertainty estimates, although this will not be included in this report.
+
+In the next sections, we will first explore the numerical results that we receive when running this setup.
+Then, we will change most of the assumptions, one-by-one, and investigate the results on the estimation error.
 
 ** Error distribution for different alongtrack distances.
 We start by investigating the error distribution of the pose estimate resulting from randomly sampled measurement noise, and evaluated at different alongtrack distances.
 
-[[fig:distance-variation-1-2]] shows the resulting error distributions (median, 25th and 75th percentile, approximate 99th percentile)
-  for different alongtrack distances given the baseline setup described aboove.
-Note that we additionally report the error requirements specifified in the MPVS.
-Instructions for reproducing the figures are given in [[sec:reproducing-barplots]].
+[[fig:distance-variation-1-2]] shows the resulting error distributions (median, 25th and 75th percentile, approximate 99th percentile) for different alongtrack distances given the baseline setup described above.
+(Note that we additionally report the error requirements specifified in the MPVS.)
+# Instructions for reproducing the figures are given in [[sec:reproducing-barplots]].
 
 #+attr_org: :width 300px
 #+attr_latex: :width 0.5\textwidth
@@ -387,7 +284,7 @@ In [[fig:overview]] we provide a basic overview over zeroth and first order feat
 
 
 #+name: fig:1-4-and-all-side-by-side
-#+caption: Side by side example.
+#+caption: Using near&far features (lhs) and using features from all visible runways (rhs).
 #+begin_figure
 #+latex: \centering
 #+attr_latex: :options {0.45\textwidth}
@@ -404,7 +301,7 @@ In [[fig:overview]] we provide a basic overview over zeroth and first order feat
 
 For now, let us stick to "zeroth order" features, and consider adding the far runway corners, and additionally measuring runway corners from other runways.
 [[fig:1-4-and-all-side-by-side]] presents the results for that setup.
-First, we notice an improvement by using the far corners of approximately \((33%, 15%, 40%)\) for \((x,y,z)\), respectively.
+First, we notice an improvement by using the far corners of approximately \((33\%, 15\%, 40\%)\) for \((x,y,z)\), respectively.
 The improvements in x and z directions can be rationalized by realizing that using these points, we can measure "vertical projection length" in the image plane (i.e. \(\Delta x\) in [[fig:overview]]), which strongly correlates with alongtrack position and height.
 However, we notice that the errors in x-direction still have a fairly wide spread.
 
@@ -470,7 +367,7 @@ A re-weighting scheme based on the angle sensitivities and error distributions c
 
 ** Further assumptions: Linear error scaling and different runways <<sec:scaling-error>>
 #+name: fig:pixel-error-comparison
-#+caption: Side by side example.
+#+caption: Linear correlation between measurement errors and prediction errors. Left-to-right: 1pxl, 2pxl, and 10pxl of standard pixel error.
 #+begin_figure
 #+latex: \centering
 #+attr_latex: :options {0.32\textwidth}
@@ -496,17 +393,9 @@ However, we do note that it's not clear whether this also holds for more "nonsta
 Another related question that is whether our results actually hold for the majority of the runways.
 To answer this question, we have rerun the basic setup (with near corners and all visible corners) for every runway listed in the datasheet, which includes about 2000 runways.
 Indeed we find significant variance, however more data is required.
-#latex: \todo{Collect this data.}
 
 
 ** Further assumptions: Attitude misalignment <<sec:attitude-errors>>
-/Reproduce:/
-: julia> let feature_mask=(1:2),
-:            σ_rot=1.0°
-:          df = make_alongtrack_distance_df(; feature_mask, σ_rot, sample_rotations=true,
-:                                             N_measurements=1000, distances=(6000:6000).*1m)
-:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
-:        end
 
 # We only report \(1\sigma\). Recall you can approximately say
 # - 68% fall in \([-\sigma, \sigma]\),
@@ -523,7 +412,7 @@ The results when taking features from all runways are presented in [[tbl:misalig
 Tables for only near- and near-far corners are found in [[sec:appendix-misaligned-attitude]].
 
 #+name: tbl:misaligned-attitude-all
-#+caption: Features: (all)
+#+caption: Position estimation errors given misaligned aircraft attitude. Using features from all visible runways.
 #+begin_table
  | \sigma_angle |  0.0° |  5.0° | 10.0° | 15.0° | 20.0° | 25.0° | 30.0° | 35.0° | 40.0° | 45.0° |
  |--------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------|
@@ -764,9 +653,169 @@ Notice also that the alongtrack error stays nearly unaffected, unlike the crosst
  | \sigma_z | 3.1291 | 3.1956 | 6.8751 | 16.831 | 29.688 | 57.163 |
 #+end_table
 
-#+latex: \noindent
-/Reproduce by running =experiment_with_attitude_noise()=./
+#+latex: newpage
+** Simulation setup (chatpt summary):noexport:
+In the baseline setup, our reference point is the runway KABQ (Albuquerque), which is positioned at an alongtrack distance of \(\qty{-6000}{\meter}\) and is horizontally centered with no crosstrack error.
+The vertical angle is set at \(\qty{1.2}{\degree}\).
+It's important to note that these crosstrack and height values are intentionally chosen to represent extreme conditions within the service boundary.
+To initiate the estimation process, we introduce measurement errors through the addition of zero-mean Gaussian noise, equivalent to one pixel of standard deviation.
+This choice closely approximates real error distributions under normal conditions.
+
+To begin the estimation, we provide an initial guess, starting from the true location and adding three samples from a zero-mean Gaussian distribution with a standard deviation of 50 meters.
+This initial guess forms the foundation for subsequent calculations.
+
+Moving on to the simulation setup, we gather real runway data from a database, specifically from the file \(\text{2307 A3 Reference Data_v2.xlsx}\).
+Within this simulation context, we continue to focus on the KABQ runway with a configuration of \([\qty{-6000}{m}, \qty{0}{m}, \qty{1.2}{\degree}]\).
+The problem is approached similarly to how OpenCV addresses it: given known 3D data points and assuming a pose, we project these 3D data points onto the screen and compare them with actual measurements.
+
+To minimize errors in the x and y directions (screen coordinates), we employ an optimization method, specifically the Levenberg-Marquardt algorithm, as provided by LsqFit.jl.
+While we did explore alternative algorithms, they generally yielded poorer performance, especially when considering additional measurements such as angles.
+
+Through this simulation, we gain the flexibility to explore various error distributions, airplane positions, orientations, and runway configurations and approaches.
+It's worth noting that some work has been done on processing uncertainty estimates, although these details are not included in this report.
+
 * Theoretical analysis
+We begin the discussion by analyzing the PnP algorithm for a specific runway and the simplest choice of feature representation: predicting the pixel coordinates of the near runway corners.
+We will explore how we can analyze the algorithms sensitivity to errors, and what happens when we introduce additional features to the representation, namely the far corners, and corners from other runways.
+We will see that by default, the algorithm performs somewhat poorly in particular in alongtrack direction, and also does not improve by adding the features.
+We will discuss what can be done for this specific case, and then discuss a more general setting where we consider a range of different parametrizations and their sensitivities.
+
+** Localization on the Albuquerque runway.  <<sec:localization-kabq>>
+Let's start by considering the localization problem on the Albuquerque runway (KABQ).
+KABQ has three different runways, which are oriented towards north-east, south-east, and east respectively.
+For now we will assume that we are located south-west of the airport, approaching the north-east facing runway.
+This runway has length \(\qty{3000}{\meter}\) and width \(\qty{65}{\meter}\).
+We define the coordinate system as in the MSVP: it is centered in the middle of the runway's threshold line, with the x-axis aligned with the alongtrack direction, the y-axis pointing along the threshold line to the left, and the z-axis pointing up.
+
+In order to understand the safety-properties of our algorithm, we want to explore some worst-case properties.
+Therefore, we will position our aircraft/camera as far and low as "possible" (as given by the service volume); however, we will center it and align it perfectly for now.
+Let \(\theta\) denote the position and \(R\) the rotation matrix (Euler notation), then we have
+\[
+\theta = \begin{bmatrix} \qty{-6000}{\meter} \\ \qty{0}{\meter} \\ \qty{126}{\meter} \end{bmatrix}\
+\text{and} \
+R = I_3.
+\]
+
+We will now consider the real locations and projections of the front two corners.
+For this, let
+\[
+p_{n,l}(\theta) = \begin{bmatrix}
+  x_{n,l}(\theta) \\
+  y_{n,l}(\theta) \\
+  z_{n,l}(\theta)
+\end{bmatrix} = \begin{bmatrix}
+  \qty{6000}{\meter} \\
+  \qty{0}{\meter} \\
+  \qty{-61}{\meter}
+\end{bmatrix}
+\]
+denote the /near, left/ (index \((n,l)\)) threshold corner in camera perspective, and let
+\[
+p'_{n,l} = \begin{bmatrix}
+  x'_{n,l} \\
+  y'_{n,l}
+\end{bmatrix}\]
+denote the projections of the corner onto the image plane, using the standard pinhole camera model with focal length \(f = \qty{35}{\milli\meter}\).
+(Here, \(x'\) points up in the camera image, and \(y'\) points left.)
+Specifically, let's consider \(\tilde{p}'_{n,l}\) as the measured (and possibly erroneous) corner positions estimates in the image as determined by the computer vision algorithm, and \(p'_{n,l}(\theta)\) as the reprojection of the known corner location given a camera position estimate \(\theta\).
+Then we can try to find our pose estimate by solving
+#+name: eq:motivation-lsq
+\begin{equation}
+\theta = \arg \min_\theta \sum_{\rho \in \{l,r\}} \left(\tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta)\right)^2 + \left(\tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta)\right)^2
+\end{equation}
+using an iterative solver and a reasonable initial guess.
+Notice that [[eq:motivation-lsq]] contains four data points (\(\tilde{x}'_{n,l}, \tilde{x}'_{n,r}, \tilde{y}'_{n,l}, \tilde{y}'_{n,r}\)) for three variables (\(\theta_1, \theta_2, \theta_3\)), i.e. we already have an overdetermined problem[fn:5].
+
+In order to analyze this equation further, we denote the loss function as \(l(\theta)\) and set the derivative to zero, i.e. \(\nabla_\theta l(\theta) \overset{!}{=} \vec{0}\).
+Then we get
+\begin{equation}
+\nabla_\theta l(\theta) = \sum_{\rho \in \{l, r\}}  \left( \tilde{x}'_{n,\rho} - x'_{n,\rho}(\theta) \right) (- \frac{\partial x'_{n,\rho}(\theta)}{\partial\theta}) + \left( \tilde{y}'_{n,\rho} - y'_{n,\rho}(\theta) \right) (- \frac{\partial y'_{n,\rho}(\theta)}{\partial\theta}) \overset{!}{=} 0.
+\end{equation}
+Interestingly, we can see that the quantities \(q\) (where \(q = x'_{n,\rho}\) or \(q = y'_{n,\rho}\)) are minimized "more strongly" if \(\frac{\partial q(\theta)}{\partial \theta}\) is large.
+Another perspective on this observation is that \(\frac{\partial q(\theta)}{\partial \theta_i}\) determines how much the difference \(\left( \tilde{q} - q(\theta) \right)\) influences the pose coordinate \(\theta_i\).
+(Recall that \(\frac{\partial q(\theta)}{\partial \theta}\) is a three dimensional vector with one entry for each \(\theta_i\).)
+
+Further, we notice that if \(q\) is very sensitive to \(\theta\), minimizing \((\tilde{q} - q(\theta)\) will have a larger effect on \(\theta\) than if \(q\) is not very sensitive -- again directly linked through \(\frac{\partial q(\theta)}{\partial \theta}\).
+Therefore, it turns out that we are placing an implicit "importance weights" of how much influence a given quantity has on \(\theta\) where the importance weight is equal to \(\left(\frac{\partial q(\theta)}{\partial \theta}\right)^2\).
+
+It seems therefore natural to consider the partial derivatives directly to understand each components influence on the final solution.
+This will also help us understand what happens when we add more image features.
+
+
+** Computing partial derivatives.
+We wish to compute the partial derivatives \(\frac{\partial q_i}{\partial \theta_j}\) for the quantities and position coordinates introduced above.
+Unfortunately, the relation between \(q_i\) and \(\theta_j\) can become quite complicated, especially when considering the general case with arbitrary rotations and positions.
+However, we are able to establish analytic relationships without too much struggle when considering positions that have no crosstrack offset and straight orientation.
+(We will discuss later what happens when these assumptions are violated.)
+
+\todo{I can probably move this part to the appendix or so...}
+Before we get started, let's recall one important mathematical theorem -- The Inverse Function Theorem -- which roughly states that for bijective functions \(q(\theta)\) we have \(\frac{\partial q(\theta)}{\partial \theta} = \frac{1}{\frac{\partial \theta}{\partial q(\theta)}}\) (see e.g. Wikipedia).
+
+Let us again consider the position and orientation introduced in [[sec:localization-kabq]].
+In this setting, we first establish relations between \(x'\) and the different \(\theta_i \in \{x, y , z\}\) using
+\[
+\frac{x'}{f} = \frac{z}{x}.
+\]
+Using this simple relation, we can find
+\[
+\frac{\partial x'}{\partial x} = -\frac{fz}{x^2}
+\]
+and
+\[
+\frac{\partial x'}{\partial z} = -\frac{f}{x}.
+\]
+We further notice that \(x'\) and \(y\) are independent.
+
+We can do something similar for \(y'\), although the equations are more complicated (see [[sec:dx-dxp-derivation]]).
+All together, we get the following Jacobi matrix:
+#+name: eq:jacobian-1
+\begin{equation}\begin{aligned}
+\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
+-\frac{fz}{x^2} & 0 & -\frac{f}{x} \\ \\
+-\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - z^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2} & \sqrt{\frac{x'^2 + f^2}{x^2 + z^2}}&
+-\frac{\sqrt{\left[ \frac{\Delta y}{\Delta y'}\right]f^2 - x^2}}{\left[ x'^2 + f^2 \right] }\frac{y'^3}{y^2}
+\end{bmatrix} \\ \vspace{0.5cm} \\
+&= \begin{bmatrix}
+\num{-1.225e-7} & 0 & \num{5.833e-6} \\ \\
+\num{-2.963e-8} & \num{5.835e-6} & \num{-6.224e-10}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+(Note that \(\frac{\partial x_{n,l}}{\partial \theta_j} = \frac{\partial x_{n,r}}{\partial \theta_j}\) etc, therefore the full matrix would be just twice the printed matrix stacked).
+
+If we recall again that these terms build an implicit weight on how strongly each term is minimized, we can see that \(\theta_1 = x\) is mostly minimized through \(x'\), and similar for \(\theta_3 = z\).
+Interestingly though, \(\frac{\partial z}{\partial x'}\) is roughly five times larger than \(\frac{\partial x}{\partial x'}\).
+This means in cases where \(x\) and \(z\) are not consistent, the optimization algorithm places a much higher weight on minimizing the consistency error for \(z\).
+In [[sec:pnp-problem]] we will go into more detail how such effects can be circumvented.
+
+Using the inverse of the derived partial derivatives, we can also make some statements about the magnitude of the errors that may be introduced given some pixel error.
+Recall that by the Inverse Function Theorem we have \(\frac{\partial \theta_j}{\partial q_i} = \frac{1}{\frac{\partial q_i}{\partial \theta_j}}\) and that \(\Delta \theta_j \approx \frac{\partial \theta_j}{\partial q_i} \cdot \Delta q_i\).
+For now, let us assume that we have one pixel of error, and let the pixel size be \(\qty{0.00345}{\milli\meter}\).
+Then, e.g. the error introduced to our estimate for \(x\) through \(y'\) can be up to \(\qty{126}{\meter}\).
+\todo{Have to think a bit more about how the potential errors interact with the implicit weights...}
+
+Note that this is roughly consistent with our experimental numerical results, that show that for one pixel of measurement error we get about \(\qty{120}{\meter}\) of alongtrack estimation error.
+
+** Beyond near corners.
+Now that we have seen how to analyze the scenario when measuring the locations of the near corners, let's consider what would happen if we take into account the far corners as well.
+Indeed we can simply compute the same Jacobian as in [[eq:jacobian-1]] and replace \(x\) by \(x + \Delta x\).
+This yields
+#+name: eq:jacobian-1
+\begin{equation}\begin{aligned}
+\left( \frac{\partial q_i}{\partial \theta_j} \right)_{ij} &= \begin{bmatrix}
+\num{-5.444e-8} & 0 & \num{3.888e-6} \\ \\
+\num{-1.317e-8} & \num{3.889e-6} & \num{-9.822e-9}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+\todo{I have to think a bit more about what this implies and how this matches up with the observation I've made in the numerical simulations}.
+** Error correlations and the implications :noexport:
+#+name: fig:error-correlations
+#+caption: \todo{Explain this plot and the implications. Refer to figures in next section.}
+#+attr_latex: :width \textwidth
+#+attr_org: :width 300
+[[file:../SensitivityReport/figs/correlations.png]]
+
 
 * The PnP Problem and beyond the OpenCV implementation <<sec:pnp-problem>>
 In the previous chapter we have seen different possibilities for representing image features and how they relate to our current position estimate.
@@ -850,7 +899,7 @@ Notice that we may include extra terms and/or weights in [[(loss-eq)]], e.g. wei
 The problem seems almost linear -- notice however the division in [[(proj-eq)]]. [fn:2]
 For the LM algorithm, we need the gradient and Hessian. Fortunately, if we use the right tools we can automatically construct them, e.g. using [[https://github.com/JuliaDiff/ForwardDiff.jl][~ForwardDiff.jl~]] or similar.
 
-*** Dealing with correlated measurements.
+*** Dealing with correlated measurements. :noexport:
 \todo{Introduce multiplication with inverse covariance matrix -- explain connection to uncertainty quantification.}
 ** Sensitivity of the solution of an overdetermined system.
 #+name: fig:simple-example
@@ -902,8 +951,8 @@ Yet again, the key lies in choosing weights as the inverse of the squared deriva
 
 Next, we present some mathematical analysis to underline each point.
 
-*** Dimensional analysis and a simple mathematical example
-*** Least-squares given uncertainty and the connection to the derivatives
+*** Dimensional analysis and a simple mathematical example :noexport:
+*** Least-squares given uncertainty and the connection to the derivatives :noexport:
 
 *** Sensitivity analysis
 Suppose that the predicted quantity \(q(\theta)\) is very sensitive to \(\theta\), i.e. \(\partial_\theta q(\theta)\) is large.
@@ -940,7 +989,9 @@ Solving \(\partial_\theta f(\theta) = 0\) yields
 
 
 
-*** inv linear model,  <<sec:simple-model>>
+#+latex: \newpage
+#+latex: \appendix
+*** inv linear model,  <<sec:simple-model>> :noexport:
 e.g. \(\min_\theta w_1(\theta - x_1)^2 + w_2(\theta-x_2)^2\).
 \[\begin{aligned}
 &&\partial_\theta f(\theta) &= 2 \left[ w_1 (\theta - x_1) + w_2 (\theta - x_2) \right] \overset{!}{=} 0 \\
@@ -951,7 +1002,7 @@ e.g. \(\min_\theta w_1(\theta - x_1)^2 + w_2(\theta-x_2)^2\).
 with \(\tilde{w}_i = \frac{w_i}{w_1+w_2} \Rightarrow \tilde{w}_1 + \tilde{w}_2=1\).
 Then we can see that the solution interpolates exactly between the two individual solutions \(x_1\) and \(x_2\) according to the weights \(w_1\) and \(w_2\).
 
-*** TODO others
+*** TODO others :noexport:
 - Warped linear model, e.g. \(\min_\theta w_1(c\cdot\theta - x_1)^2 + w_2(\theta-x_2)^2\).
 
 
@@ -969,7 +1020,7 @@ Then we can see that the solution interpolates exactly between the two individua
   \]
   i.e. it just boils down to a regular LS problem with weights exactly the inverse of the variance!
 
-*** TODO using multiple highly correlated terms, e.g.
+*** TODO using multiple highly correlated terms, e.g. :noexport:
 \(
 \min_\theta f(\alpha_1, \alpha_2)
 \)
@@ -995,6 +1046,27 @@ For the linear dependencies, we can e.g. model the marginal Gaussians in a param
 #+latex: \newpage
 
 * Appendix
+** Reproducing the results
+*** Correlations
+/The results in this section may be reproduced by the notebook located at https://github.com/airbus-wayfinder/PNPSolve.jl/blob/main/notebooks/error_distribution.jl
+using input data located at =login2:/home/romeo.valentin.int/vnv_processing/vnv_with_manual_Q3_pre_release.csv=./
+*** Barplots for estimation errors  <<sec:reproducing-barplots>>
+*** Different features
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:2), feature_str="1:2"), N_measurements=2_000, approach_idx=1, sigma_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:4), feature_str="1:4"), N_measurements=2_000, approach_idx=1, sigma_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, sigma_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
+:
+: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, sigma_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=4), savefig=true)
+*** Attitude misalignment
+: julia> let feature_mask=(1:2),
+:            sigma_rot=1.0°
+:          df = make_alongtrack_distance_df(; feature_mask, sigma_rot, sample_rotations=true,
+:                                             N_measurements=1000, distances=(6000:6000).*1m)
+:          std.(eachcol(df)[[:err_x, :err_y, :err_z]])
+:        end
+*** Attitude prediction errors
+/Reproduce by running =experiment_with_attitude_noise()=./
 ** Correlations <<sec:correlation-matrix>>
 Correlation values (in service volume):
 \[\mathit{corr}(\begin{bmatrix}x \\ y \end{bmatrix}, \begin{bmatrix}x \\ y \end{bmatrix}) =
@@ -1041,15 +1113,6 @@ file:figs/error_correlations_extreme.pdf
 | \sigma_z     | 1.941 | 3.371 | 13.94 | 22.91 | 27.96 | 32.68 | 35.86 | 37.57 | 39.17 | 40.17 |
 #+end_table
 
-** Simulation study
-: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:2), feature_str="1:2"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
-: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(1:4), feature_str="1:4"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
-:
-: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=1), savefig=true)
-:
-: julia> plot_alongtrack_distance_errors(; distances=(300:100:6000).*1m, features=(;feature_mask=(:), feature_str="all"), N_measurements=2_000, approach_idx=1, σ_pxl=1.0pxl, draw_requirements=true, correlated_noise=false, runway_args=(; ICAO="KABQ", approach_idx=4), savefig=true)
-** Reproducing the results
-*** Barplots for estimation errors  <<sec:reproducing-barplots>>
 ** Derivation of \(\frac{\partial x'}{\partial x}\) <<sec:dx-dxp-derivation>>
 By looking from the top onto the situation, we can establish
 \[\begin{aligned}
@@ -1059,12 +1122,12 @@ By looking from the top onto the situation, we can establish
 Taking the square root, differentiating by \(x'\) and inverting the fraction yields the result.
 The result for \(\frac{\partial x'}{\partial z}\) follows similarly.
 
-** Regression vs classification problems
-** Connection to uncertainty quantification
-** Predicting Order 1 measurements and computing Order 2/3 measurements from them.
-** Representations trained using labels only from position
+** Regression vs classification problems :noexport:
+** Connection to uncertainty quantification :noexport:
+** Predicting Order 1 measurements and computing Order 2/3 measurements from them. :noexport:
+** Representations trained using labels only from position :noexport:
 
-** The three stages  <<sec:the-three-stages>>
+** The three stages  <<sec:the-three-stages>> :noexport:
 The current system is structured as follows:
 - Stage one: :: Stage one uses a image detection algorithm to find a rough crop of the runway in the image (which may be empty), i.e. has the type signature
   \[
