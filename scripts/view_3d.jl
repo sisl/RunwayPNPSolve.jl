@@ -1,7 +1,7 @@
 using Revise
-using PNPSolve
-using PNPSolve.LsqPnP: pnp
-using PNPSolve.LsqPnP.RunwayLib: ImgProj, make_projection_fn
+using RunwayPNPSolve
+using RunwayPNPSolve.LsqPnP: pnp
+using RunwayPNPSolve.LsqPnP.RunwayLib: ImgProj, make_projection_fn
 # using CameraModels
 using LinearAlgebra
 using Rotations

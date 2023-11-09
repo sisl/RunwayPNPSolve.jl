@@ -1,4 +1,4 @@
-using PNPSolve, RunwayLib                     # Here's where the magic happens
+using RunwayPNPSolve, RunwayLib               # Here's where the magic happens
 using GeodesyXYZExt                           # My library to build a local xyz frame relative to longitude, latitude
 using LinearAlgebra: I, normalize             # ------------------
 import ProgressBars: ProgressBar              #     ...
