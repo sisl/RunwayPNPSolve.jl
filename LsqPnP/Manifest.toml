@@ -644,7 +644,10 @@ version = "1.5.1"
 
 [[deps.RunwayLib]]
 deps = ["CoordinateTransformations", "DataFrames", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Unitful", "XLSX"]
-path = "../RunwayLib/"
+git-tree-sha1 = "ab74f171ad7b7580d0acc310223a98e26f203c47"
+repo-rev = "main"
+repo-subdir = "RunwayLib"
+repo-url = "git@github.com:sisl/RunwayPNPSolve.jl"
 uuid = "21826f37-226f-4b4e-8327-0e174ca2fff2"
 version = "0.1.0"
 
