@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.0-beta2"
+julia_version = "1.10.0-rc1"
 manifest_format = "2.0"
 project_hash = "092ddd36cde76b9be6ac37cbd8aff8eb1441367a"
 
@@ -474,6 +474,12 @@ git-tree-sha1 = "bdb1942cd4c45e3c678fd11569d5cccd80976237"
 uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 version = "1.0.4"
 
+[[deps.EpollShim_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "8e9441ee83492030ace98f9789a654a6d0b1f643"
+uuid = "2702e6a9-849d-5ed8-8c21-79e8b8f9ee43"
+version = "0.0.20230411+0"
+
 [[deps.ErrorfreeArithmetic]]
 git-tree-sha1 = "d6863c556f1142a061532e79f611aa46be201686"
 uuid = "90fa49ef-747e-5e6f-a989-263ba693cf1a"
@@ -694,7 +700,7 @@ version = "1.1.0"
 deps = ["Geodesy", "Rotations", "StaticArrays", "Tau"]
 git-tree-sha1 = "7512bf71ce1c537522216c3b0f41236efb45e093"
 repo-rev = "main"
-repo-url = "https://github.com/RomeoV/GeodesyXYZExt.jl"
+repo-url = "git@github.com:sisl/GeodesyXYZExt.jl.git"
 uuid = "987ad435-e993-44fa-9c05-fce934ed82f8"
 version = "0.1.0"
 weakdeps = ["Unitful"]
@@ -1008,11 +1014,16 @@ version = "0.6.4"
 [[deps.LibCURL_jll]]
 deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
-version = "8.0.1+1"
+version = "8.4.0+0"
 
 [[deps.LibGit2]]
-deps = ["Base64", "NetworkOptions", "Printf", "SHA"]
+deps = ["Base64", "LibGit2_jll", "NetworkOptions", "Printf", "SHA"]
 uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
+
+[[deps.LibGit2_jll]]
+deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll"]
+uuid = "e37daf67-58a4-590a-8e99-b0245dd2ffc5"
+version = "1.6.4+0"
 
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
@@ -1127,7 +1138,7 @@ version = "1.0.2"
 deps = ["Distributions", "ForwardDiff", "LinearAlgebra", "NLSolversBase", "Printf", "StatsBase"]
 git-tree-sha1 = "e8e172b7dde06fed53b49de635d94184ad341a80"
 repo-rev = "master"
-repo-url = "https://github.com/RomeoV/LsqFit.jl"
+repo-url = "git@github.com:RomeoV/LsqFit.jl.git"
 uuid = "2fda8390-95c7-5789-9bda-21331edee243"
 version = "0.13.0"
 
@@ -1288,7 +1299,7 @@ version = "1.2.0"
 deps = ["GraphMakie", "Graphs"]
 git-tree-sha1 = "bb941eca7c8343398fc4e7563b45c0e5d55032df"
 repo-rev = "main"
-repo-url = "git@github.com:RomeoV/ObservableDependencies.jl"
+repo-url = "git@github.com:RomeoV/ObservableDependencies.jl.git"
 uuid = "41e2de7c-dfc6-4065-9ecc-8c57fc9f7839"
 version = "0.1.0"
 
@@ -1883,7 +1894,7 @@ version = "1.4.2"
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
-version = "1.9.0"
+version = "1.10.0"
 
 [[deps.StatsAPI]]
 deps = ["LinearAlgebra"]
@@ -1941,7 +1952,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "Pkg", "libblastrampoline_jll"]
 uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
-version = "7.2.0+1"
+version = "7.2.1+1"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -2084,7 +2095,7 @@ uuid = "41fe7b60-77ed-43a1-b4f0-825fd5a5650d"
 version = "0.2.0"
 
 [[deps.Wayland_jll]]
-deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
+deps = ["Artifacts", "EpollShim_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
 git-tree-sha1 = "ed8d92d9774b077c53e1da50fd81a36af3744c1c"
 uuid = "a2964d1f-97da-50d4-b82a-358c7fce9d89"
 version = "1.21.0+0"
