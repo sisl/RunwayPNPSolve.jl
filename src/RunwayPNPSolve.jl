@@ -27,4 +27,4 @@ export sample_pos_noise,
     sample_angular_noise,
     sample_random_rotation
 
-end # module PNPSolve
+end # module RunwayPNPSolve
