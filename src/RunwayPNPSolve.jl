@@ -1,4 +1,4 @@
-module PNPSolve
+module RunwayPNPSolve
 using Reexport
 using Unitful
 using Geodesy, GeodesyXYZExt
