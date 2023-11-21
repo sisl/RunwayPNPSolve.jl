@@ -330,7 +330,7 @@ perturbed_pose_estimates = lift(
     # @show rad2deg.(θ[:lhs] - θ[:rhs] - τ/2)
     # @assert ((:γ ∈ use_xy) && feature_toggles[3]) || !(:γ ∈ use_xy)
 
-    # corner_feature_mask = feature_toggles[[1, 1, 2, 2]]
+    corner_feature_mask = feature_toggles[[1, 1, 2, 2]]
     noise_mask = noise_toggles[[1, 1, 2, 2]]
     # make_corr_matrix(dim, offdiag_val) = begin
     #     Σ = Matrix{Float64}(I(dim))
@@ -346,12 +346,11 @@ perturbed_pose_estimates = lift(
         end
     sample_angular_noise() = σ_angle * 1rad * randn(length(angles))
     sample_pos_noise() = [100;100;50] .* randn(3) .* 1m
-    collect_fn = ThreadsX.collect # or regular collect collect
+    collect_fn = ThreadsX.collect # or regular collect
     sols = collect_fn(
         LsqPnP.pnp(
-            SVector{4}(runway_corners),
-            # projected_points,
-            (projected_points .+ SVector{4}(sample_measurement_noise())),
+            runway_corners[corner_feature_mask],
+            (projected_points .+ SVector{4}(sample_measurement_noise()))[corner_feature_mask],
             # corner_feature_mask,
             # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
