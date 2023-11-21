@@ -697,9 +697,9 @@ version = "0.4.2"
 
 [[deps.ForwardDiff]]
 deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
-path = "/home/romeo/.julia/dev/ForwardDiff"
+git-tree-sha1 = "cf0fe81336da9fb90944683b8c41984b08793dad"
 uuid = "f6369f11-7733-5829-9624-2563aa707210"
-version = "0.10.37"
+version = "0.10.36"
 weakdeps = ["StaticArrays"]
 
     [deps.ForwardDiff.extensions]
@@ -2296,7 +2296,9 @@ version = "0.4.1"
 
 [[deps.Unitful]]
 deps = ["Dates", "LinearAlgebra", "Random"]
-path = "/home/romeo/.julia/dev/Unitful"
+git-tree-sha1 = "0ddef2d745237afe500d82b164bba1369e4385af"
+repo-rev = "master"
+repo-url = "git@github.com:RomeoV/Unitful.jl.git"
 uuid = "1986cc42-f94f-5a68-af5c-568840ba703d"
 version = "1.18.0"
 weakdeps = ["ConstructionBase", "InverseFunctions"]
