@@ -1,18 +1,19 @@
 import RunwayLib: project, CamTransform
 import Base.Iterators: flatten
-function pnp(world_pts::SVector{N, <:XYZ{<:WithUnits(m)}},
-             measurements::SVector{N, <:ImgProj{<:WithUnits(pxl)}},
+function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
+             measurements::AbstractVector{<:ImgProj{<:WithUnits(pxl)}},
              # pixel_feature_mask::Union{UnitRange{Int64}, Colon, <:AbstractVector{Bool}},
              cam_rot::Rotation{3};
              # angles = ComponentVector{Angle}(β=[], ᵞ=[]),
              initial_guess::XYZ{<:WithUnits(m)} = XYZ(-3000.0m, 0m, 30m),
              components=[:x, :y],
              solver=SimpleNewtonRaphson(),
-             ) where {N}
+             )
+    N = length(world_pts); @assert N == length(measurements)
     mask = repeat([:x in components, :y in components], outer=N) |> SVector{2*N}
 
     loss(loc, (; cam_rot, world_pts, measurements)) = begin
-        simulated_projections::SVector{N, ImgProj} = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts)
+        simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts)
         res = SVector(flatten(measurements)...) - SVector(flatten(simulated_projections)...)
         # res = norm.(measurements .- simulated_projections)  # <- this version is about 1_000_000 times slower somehow...
         ustrip.(pxl, res).*mask
