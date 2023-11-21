@@ -1,7 +1,5 @@
-# using Optimization
-# using OptimizationOptimJL
 # run ] dev Unitful GeodesyXYZExt .
-# run ] add SimpleNonlinearSolve ForwardDiff CoordinateTransformations Rotations StaticArraysCore ForwardDiff
+# run ] add SimpleNonlinearSolve ForwardDiff CoordinateTransformations Rotations StaticArraysCore
 using Rotations, CoordinateTransformations, NonlinearSolve, Unitful, Unitful.DefaultSymbols, GeodesyXYZExt, RunwayLib, StaticArraysCore
 using SimpleNonlinearSolve
 import SciMLBase: ReturnCode

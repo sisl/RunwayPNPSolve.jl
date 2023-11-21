@@ -1,27 +1,28 @@
 using Revise
 using RunwayPNPSolve
 using RunwayPNPSolve.LsqPnP: pnp
-using RunwayPNPSolve.LsqPnP.RunwayLib: ImgProj, make_projection_fn
+using RunwayPNPSolve.LsqPnP.RunwayLib: ImgProj, project
 # using CameraModels
 using LinearAlgebra
 using Rotations
 using CoordinateTransformations
-using Makie: Pixel as MakiePixel, px as Makie_px, convert as Makie_convert
+# using Makie: Pixel as MakiePixel, px as Makie_px, convert as Makie_convert
 import Makie.Observables: @map
 using GLMakie
-using Optim
+# using Optim
 using ThreadsX
 using IntervalSets
 using StatsBase
 using Unzip
-using StructArrays
-using Unitful
+# using StructArrays
+using Unitful, Unitful.DefaultSymbols
 using Tau
-import Unitful: mm, rad
+# import Unitful: mm, rad
 using Geodesy
 using GeodesyXYZExt
 import Distributions: Chisq, MvNormal
 import ComponentArrays: ComponentVector
+import StaticArraysCore: SVector
 
 # import Unitful: convert, Unit, Quantity
 # Unitful.convert(t::Type{Quantity{T, D, U}}, u::Unit) where {T, D, U} = Unitful.convert(t, convert(Number, u))
@@ -47,7 +48,7 @@ const Δx = 3500.0m
 const Δy = 61.0m
 
 runway_corners =
-    XYZ{Meters}[[0m, -Δy / 2, 0m], [0m, Δy / 2, 0m], [Δx, +Δy / 2, 0m], [Δx, -Δy / 2, 0m]]
+    XYZ.([[0m, -Δy / 2, 0m], [0m, Δy / 2, 0m], [Δx, +Δy / 2, 0m], [Δx, -Δy / 2, 0m]])
 runway_corners_far = [
     3 * (runway_corners[4] - runway_corners[1]) + runway_corners[1],
     3 * (runway_corners[3] - runway_corners[2]) + runway_corners[2],
@@ -157,13 +158,13 @@ function make_perspective_plot(plt_pos, cam_pose::Observable{<:AffineMap}; title
 
     # projective_transform = @lift PerspectiveMap() ∘ inv($cam_pose)
     # projected_points = @lift map($projective_transform, runway_corners)
-    projected_points = @lift make_projection_fn($cam_pose).(runway_corners)
+    projected_points = @lift project.([$cam_pose], runway_corners)
     projected_points_rect = @lift $projected_points[[1, 2, 3, 4, 1]]
 
     lines!(cam_view_ax, @map(projected_coords_to_plotting_coords.(&projected_points_rect)))
     # lines!(cam_view_ax, mapeach(projected_coords_to_plotting_coords, projected_points_rect))
     # plot far points in 2d
-    projected_points_far = @lift make_projection_fn($cam_pose).(runway_corners_far)
+    projected_points_far = @lift project.([$cam_pose], runway_corners_far)
     projected_lines_far = (
         @lift([$projected_points[1], $projected_points_far[1]]),
         @lift([$projected_points[2], $projected_points_far[2]])
@@ -320,22 +321,22 @@ perturbed_pose_estimates = lift(
     corr_noise_toggle.active,
 ) do cam_pose_gt, σ, σ_angle, feature_toggles, use_xy, noise_toggles, num_pose_est, corr_noise
     @debug "Call plotting update."
-    projected_points::Vector{ImgProj{Pixels}} = make_projection_fn(cam_pose_gt).(runway_corners)
-    angles = let
-        (; lhs, rhs) = hough_transform(projected_points[1:4])[:θ]
-        ComponentVector(γ=[lhs, rhs], β=[(rhs+(τ/4)rad)-(lhs-(τ/4)rad), ])
-    end
+    projected_points::SVector{length(runway_corners)} = project.([cam_pose_gt], runway_corners)
+    # angles = let
+    #     (; lhs, rhs) = hough_transform(projected_points[1:4])[:θ]
+    #     ComponentVector(γ=[lhs, rhs], β=[(rhs+(τ/4)rad)-(lhs-(τ/4)rad), ])
+    # end
     # @show rad2deg.([θ[:lhs], θ[:rhs]])
     # @show rad2deg.(θ[:lhs] - θ[:rhs] - τ/2)
-    @assert ((:γ ∈ use_xy) && feature_toggles[3]) || !(:γ ∈ use_xy)
+    # @assert ((:γ ∈ use_xy) && feature_toggles[3]) || !(:γ ∈ use_xy)
 
-    corner_feature_mask = feature_toggles[[1, 1, 2, 2]]
+    # corner_feature_mask = feature_toggles[[1, 1, 2, 2]]
     noise_mask = noise_toggles[[1, 1, 2, 2]]
-    make_corr_matrix(dim, offdiag_val) = begin
-        Σ = Matrix{Float64}(I(dim))
-        Σ[offdiag_indices(Σ)] .= offdiag_val
-        Σ
-    end
+    # make_corr_matrix(dim, offdiag_val) = begin
+    #     Σ = Matrix{Float64}(I(dim))
+    #     Σ[offdiag_indices(Σ)] .= offdiag_val
+    #     Σ
+    # end
 
     sample_measurement_noise() =
         let Σ = (corr_noise ? make_corr_matrix(4, 0.9) : Matrix{Float64}(I(4))),
@@ -348,18 +349,19 @@ perturbed_pose_estimates = lift(
     collect_fn = ThreadsX.collect # or regular collect collect
     sols = collect_fn(
         LsqPnP.pnp(
-            runway_corners,
-            (projected_points .+ sample_measurement_noise())[corner_feature_mask],
-            corner_feature_mask,
+            SVector{4}(runway_corners),
+            # projected_points,
+            (projected_points .+ SVector{4}(sample_measurement_noise())),
+            # corner_feature_mask,
             # (θ[:lhs] - θ[:rhs] - τ / 2) * 1rad + sample_angular_noise(),
             RotY(0.0);
-            angles=(feature_toggles[3] ? angles + sample_angular_noise() * noise_toggles[3] : ComponentVector(β=typeof(1.0rad)[], γ = typeof(1.0rad)[])),
-            initial_guess = cam_pose_gt.translation + sample_pos_noise(),
+            # angles=(feature_toggles[3] ? angles + sample_angular_noise() * noise_toggles[3] : ComponentVector(β=typeof(1.0rad)[], γ = typeof(1.0rad)[])),
+            # initial_guess = cam_pose_gt.translation + sample_pos_noise(),
             components=use_xy,
         ) for _ = 1:num_pose_est
     )
     global opt_traces = sols
-    pts = Optim.minimizer.(sols)
+    pts = sols
     # may filter to contain pose outliers
     # filter(p -> (p[2] ∈ 0±30) && (p[3] ∈ 0..50) && (p[1] ∈ -150..0),
     #        pts) |> collect
@@ -368,7 +370,7 @@ end
 pose_samples = scatter!(
     scene,
     mapeach(p -> ustrip.(m, p), perturbed_pose_estimates);
-    color = map(x -> (x ? :blue : :red), Optim.converged.(opt_traces)),
+    # color = map(x -> (x ? :blue : :red), Optim.converged.(opt_traces)),
 )
 lift(perturbed_pose_estimates, C_t_true) do ps, pos
     μ = mean(getindex.(ps, 1) .- pos[1])

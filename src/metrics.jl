@@ -1,5 +1,5 @@
 import Makie: lift
-import Optim
+# import Optim
 ## construct pose estimate errors
 function make_error_bars_plot(error_plots_grid, pos_gt, rot_gt, sols)
     errors_obs = lift(pos_gt, sols) do pos, sols

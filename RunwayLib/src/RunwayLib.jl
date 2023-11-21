@@ -16,7 +16,8 @@ include("projections.jl")
 include("runway_utils.jl")
 
 export ImgProj, RunwayCorners, make_projection_fn
-export Angle, Meters, Pixels, pxl
+# export Angle, Meters, Pixels, pxl
+export pxl
 export Point2, Point3
 export angle_to_ENU, load_runways, compute_LLA_rectangle, compute_thresholds_and_corners_in_ENU
 
