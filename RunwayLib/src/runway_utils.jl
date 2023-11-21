@@ -32,12 +32,12 @@ end
 
 """Takes an angle given as 'bearing', i.e. with zero pointing north and positive direction clockwise,
  and translates it to an ENU angle, i.e. with zero pointing east and positive direction counter-clockwise."""
-angle_to_ENU(θ::Angle) = let
+angle_to_ENU(θ::AngularQuantity) = let
     θ = -θ  # flip orientation
     θ = θ + 90°  # orient from x axis (east)
 end
 
-function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::Angle) where T<:Length
+function construct_runway_corners(threshold::ENU{T}, width::Length, bearing::AngularQuantity) where T<:Length
     # Bearing is defined in degrees, clockwise, from north.
     # We want it in rad, counterclockwise (i.e. in accordance to z axis), from east (x axis).
     bearing = angle_to_ENU(bearing)

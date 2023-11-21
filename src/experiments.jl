@@ -19,6 +19,7 @@ import Tau: τ                                 # τ = 2π. more reasonable way t
 import ComponentArrays: ComponentVector       # indexing into long array by component. a bit special purpose.
 
 import Rotations: RotY
+import RunwayLib: AngularQuantity
 
 using AlgebraOfGraphics, CairoMakie
 
@@ -36,7 +37,7 @@ function setup_runway!(; ICAO="KABQ", approach_idx=1)
     runways_df = runways_df[rot_indices, :]
 
     origin::LLA = LLA(runways_df[1, ["THR Lat", "THR Long", "THR Elev"]]...)
-    runway_bearing::Angle = angle_to_ENU(runways_df[1, "True Bearing"]°)
+    runway_bearing::AngularQuantity = angle_to_ENU(runways_df[1, "True Bearing"]°)
 
     # Fix coordinate system to enable ENU->XYZ translation. Global singleton variable!
     GeodesyXYZExt.fixdatum!(Geodesy.wgs84)
@@ -67,7 +68,7 @@ sample_measurement_noise(N; σ=1.0pxl, correlated_noise=false) =
     end
 sample_angular_noise(; σ_angle=deg2rad(1rad)) = σ_angle * randn()
 "Randomizes rotation axis direction and samples normally distributed angle around that axis."
-function sample_random_rotation(; σ_rot::Angle=1.0°)
+function sample_random_rotation(; σ_rot::AngularQuantity=1.0°)
     n = normalize(rand(SVector{3, Float64}))
     angle = σ_rot*randn() |> Fix1(ustrip, rad)
     RotationVec((angle.*n)...)

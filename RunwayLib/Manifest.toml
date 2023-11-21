@@ -2,7 +2,7 @@
 
 julia_version = "1.10.0-rc1"
 manifest_format = "2.0"
-project_hash = "f6fcb70a97d10900f0078449cf70fb2b8c90e0b1"
+project_hash = "223ee802a0df95e8fa84e2f136ca5cbc356b2d1e"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
@@ -443,9 +443,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[deps.Unitful]]
 deps = ["Dates", "LinearAlgebra", "Random"]
-git-tree-sha1 = "a72d22c7e13fe2de562feda8645aa134712a87ee"
+path = "/home/romeo/.julia/dev/Unitful"
 uuid = "1986cc42-f94f-5a68-af5c-568840ba703d"
-version = "1.17.0"
+version = "1.18.0"
 
     [deps.Unitful.extensions]
     ConstructionBaseUnitfulExt = "ConstructionBase"
