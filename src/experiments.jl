@@ -7,7 +7,7 @@ import Random: seed!                          #     ...
 using Logging                                 #     ...
 using DataFrames                              # ------------------
 using Rotations                               # deal with rotation matrices
-using ThreadsX                                # parallelize some operations
+using Transducers                             # parallelize some operations
 using Distributions                           # Gaussian, Cauchy, pdf, cdf, quantile, ...
 using CoordinateTransformations               # work with coordinate systems, image projections
 using Geodesy                                 # work with Longitude, Latitude etc
@@ -128,8 +128,8 @@ function make_alongtrack_distance_df(; N_measurements=1000,
         return pos_estimate - camera_pos
     end
 
-    map_fn = map # (parallel ? ThreadsX.map : map)
-    collect_fn = (parallel ? ThreadsX.collect : collect)
+    map_fn = map # (parallel ? Transducers.map : map)
+    collect_fn = (parallel ? Transducers.tcollect : collect)
     results = map_fn(distances) do d
         sols = collect_fn(solve_sample(d) for _ = 1:N_measurements)
         sols_mat = stack(sols, dims=1) .|> x->ustrip(m, x)

@@ -720,11 +720,8 @@ uuid = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 version = "0.5.12"
 
 [[deps.RunwayLib]]
-deps = ["CoordinateTransformations", "DataFrames", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Unitful", "XLSX"]
-git-tree-sha1 = "ab74f171ad7b7580d0acc310223a98e26f203c47"
-repo-rev = "main"
-repo-subdir = "RunwayLib"
-repo-url = "git@github.com:sisl/RunwayPNPSolve.jl"
+deps = ["CoordinateTransformations", "DataFrames", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "LinearAlgebra", "Rotations", "StaticArraysCore", "Tau", "Unitful", "XLSX"]
+path = "../RunwayLib"
 uuid = "21826f37-226f-4b4e-8327-0e174ca2fff2"
 version = "0.1.0"
 
@@ -953,7 +950,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[deps.Unitful]]
 deps = ["Dates", "LinearAlgebra", "Random"]
-path = "/home/romeo/.julia/dev/Unitful"
+git-tree-sha1 = "0ddef2d745237afe500d82b164bba1369e4385af"
+repo-rev = "master"
+repo-url = "git@github.com:RomeoV/Unitful.jl.git"
 uuid = "1986cc42-f94f-5a68-af5c-568840ba703d"
 version = "1.18.0"
 
