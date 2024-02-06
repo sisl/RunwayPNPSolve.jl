@@ -29,7 +29,7 @@ cameramap(::Val{N}) where {N} = ProjectionMap{N}()
 cameramap(::Val{N}, scale::Number) where {N} =
     LinearMap(UniformScaling(scale)) ∘ ProjectionMap{N}()
 
-CamTransform = AffineMap
+const CamTransform = AffineMap
 
 function project(cam_pose::CamTransform{<:Rotation{3}, <:XYZ{<:WithUnits(m)}},
                  world_point::XYZ{<:WithUnits(m)})::ImgProj

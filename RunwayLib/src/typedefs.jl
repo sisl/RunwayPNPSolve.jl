@@ -12,8 +12,8 @@ Coordinate system in camera display, i.e. what the camera sees.
 x points right, y points up.
 """
 struct ImgProj{T} <: FieldVector{2, T}
-    x
-    y
+    x :: T
+    y :: T
 end
 # enable broadcasting and other functionality
 similar_type(::Type{<:ImgProj}, ::Type{T}, s::Size{S}) where {T, S} = ImgProj{T}
