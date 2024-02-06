@@ -52,7 +52,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     ps = (; cam_rot, world_pts, measurements, measured_angles, runway_pts)
     prob = NonlinearLeastSquaresProblem(loss, initial_guess, ps)
     res = solve(prob, solver; maxiters=100_000)
-    @assert res.retcode == ReturnCode.Success
-    res.u*m
+    @assert res.retcode == ReturnCode.Success res
+    XYZ(res.u*m)
 end
 project_angle_onto_unit_circle(angle::AngularQuantity) = Point2(cos(angle), sin(angle))
