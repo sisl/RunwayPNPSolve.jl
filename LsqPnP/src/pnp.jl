@@ -1,9 +1,11 @@
 import RunwayLib: project, CamTransform
 import Base.Iterators: flatten
 import RunwayLib: AngularQuantity
+import LinearAlgebra: cholesky
 function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
              measurements::AbstractVector{<:ImgProj{<:WithUnits(pxl)}},
              cam_rot::Rotation{3};
+             measurement_covariance::AbstractMatrix = I(2*length(measurements)),
              measured_angles::ComponentVector{<:AngularQuantity} = ComponentVector(lhs=0.0rad, rhs=0.0rad),
              runway_pts::AbstractArray{<:XYZ{<:WithUnits(m)}}=world_pts,
              initial_guess::XYZ{<:WithUnits(m)} = XYZ(-3000.0m, 0m, 30m),
@@ -21,10 +23,11 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
         results = []
         # process corner projections
         if (:x in components || :y in components)
+            inv_weights = cholesky(measurement_covariance).U'
             res_pts = let measurements_ = SVector(flatten(measurements)...),
                         simulated_projections_ = SVector(flatten(simulated_projections)...)
                 res = measurements_ .- simulated_projections_
-                ustrip.(pxl, res).*mask_pts
+                inv_weights \ ustrip.(pxl, res).*mask_pts
             end
             push!(results, res_pts)
         end
