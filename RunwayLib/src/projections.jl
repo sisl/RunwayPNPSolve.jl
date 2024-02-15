@@ -46,7 +46,7 @@ using LinearAlgebra: dot, norm, normalize
 "Hough transform."
 function compute_rho_theta(p1::StaticVector{2, T}, p2::StaticVector{2, T′}, p3::StaticVector{2, T′′}) where {T, T′, T′′}
     p4(λ) = p1 + λ*(p2-p1)
-    λ = dot((p2-p1), (p3-p1)) / norm(p2-p1)^2
+    λ = dot((p2-p1), (p3-p1)) / (norm(p2-p1)^2 + sqrt(eps(T)) * oneunit(T)^2)
     # @assert isapprox(dot(p2-p1, p4(λ)-p3)/oneunit(T)^2, 0.; atol=1e-3) "$(dot(p2-p1, p4(λ)-p3))"
     ρ = norm(p4(λ) - p3)
 
@@ -55,14 +55,15 @@ function compute_rho_theta(p1::StaticVector{2, T}, p2::StaticVector{2, T′}, p3
     y = vec1 - vec2
     x = vec1 + vec2
     θ = 2*atan(norm(y), norm(x)) * -sign(vec2[2])
+    @assert isfinite(λ)
     return ρ, θ
 end
 
 function project_line(cam_pose::CamTransform{<:Rotation{3}, <:XYZ{<:WithUnits(m)}},
                       img_reference_point::ImgProj,
-                      world_point_tpl::NTuple{2, XYZ{<:WithUnits(m)}})::SVector{2}
+                      world_point_tpl::NTuple{2, XYZ{<:WithUnits(m)}})
     end_points = project.([cam_pose], world_point_tpl)
-    compute_rho_theta(end_points[1], end_points[2], img_reference_point)
+    return compute_rho_theta(end_points[1], end_points[2], img_reference_point)
 end
 
 

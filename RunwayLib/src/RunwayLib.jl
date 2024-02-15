@@ -15,7 +15,7 @@ include("typedefs.jl")
 include("projections.jl")
 include("runway_utils.jl")
 
-export ImgProj, RunwayCorners, project
+export ImgProj, RunwayCorners, project, project_line
 export CamTransform
 export pxl
 export Point2, Point3
