@@ -22,6 +22,7 @@ include("pnp.jl")
 # include("pnp_others.jl")
 
 export pnp, hough_transform
+export project_line_onto_unit_circle, extend_covariance
 export pxl, DATUM
 export Point2d, Point3d
 

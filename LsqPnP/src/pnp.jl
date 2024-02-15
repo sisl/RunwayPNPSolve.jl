@@ -16,12 +16,9 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
              )
     isempty(components) && return initial_guess
     N = length(world_pts); @assert N == length(measurements)
-    mask_pts = repeat([:x in components, :y in components], outer=N) |> SVector{2*N}
-    # mask_angles = repeat([:α in components], outer=4) |> SVector{4}
 
     loss(loc, (; cam_rot, world_pts, measurements, measured_lines, runway_pts)) = begin
         simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts)
-        # res = norm.(measurements .- simulated_projections)  # <- this version is about 1_000_000 times slower somehow...
         results = []
         # process points
         if (:x in components || :y in components)
@@ -29,43 +26,30 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
             res_pts = let measurements_ = SVector(flatten(measurements)...),
                         simulated_projections_ = SVector(flatten(simulated_projections)...)
                 res = measurements_ .- simulated_projections_
-                inv_weights \ ustrip.(pxl, res).*mask_pts
+                inv_weights \ ustrip.(pxl, res)
             end
-            # @info typeof(res_pts)
-            # push!(results, res_pts)
             append!(results, res_pts)
         end
 
         # process lines
         if (:α in components)
+            # Convert measurement covariance to line projection (add extra elements)
+            cov_ext = extend_covariance(lines_covariance)
+            inv_weights = cholesky(cov_ext).U'
+            # Project lines
             simulated_lines = project_line.([CamTransform(cam_rot, XYZ(loc*m))], [ImgProj(0 * pxl, 0 * pxl)], world_pts_lines)
             p = project_line_onto_unit_circle
             res_lines = let 
-                measurements_ = p.(measured_lines)
-                simulated_lines_ = p.(simulated_lines)
-                measurements_ - simulated_lines_
+                measurements_ = SVector(flatten(p.(measured_lines))...)
+                simulated_lines_ = SVector(flatten(p.(simulated_lines))...)
+                res = measurements_ - simulated_lines_
+                inv_weights \ res
             end
-            # @info typeof(res_lines)
-            # push!(results, res_lines)
             for elem in res_lines
                 append!(results, elem)
             end
-            # append!(results, res_lines)
-
-            # @assert length(runway_pts) == 4 "Provide runway corners to use angle."
-            # all_simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], runway_pts)
-            # simulated_angles = hough_transform(all_simulated_projections)[:θ]
-            # p = project_angle_onto_unit_circle
-            # f = (x->SVector(flatten(x)...))
-            # res_angles = let measurements_ = f(p.([measured_angles[:lhs], measured_angles[:rhs]])),
-            #                 simulated_angles_ = f(p.([simulated_angles[:lhs], simulated_angles[:rhs]]))
-            #     scaling = deg2rad(1)*2
-            #     (measurements_ - simulated_angles_) .* mask_angles / scaling
-            # end
-            # push!(results, res_angles)
         end
 
-        # @info typeof(results)
         T = promote_type(eltype.(results)...)
         return reduce(vcat, results; init=T[])
     end
@@ -73,12 +57,24 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     initial_guess = MVector{3}(ustrip.(m, initial_guess))
     ps = (; cam_rot, world_pts, measurements, measured_lines, runway_pts)
     prob = NonlinearLeastSquaresProblem(loss, initial_guess, ps)
-    res = solve(prob, solver; maxiters=100_000)
+    res = solve(prob, solver; maxiters=100_000, abstol=1e-5)
     @assert res.retcode == ReturnCode.Success res
     XYZ(res.u*m)
 end
+
 project_angle_onto_unit_circle(angle::AngularQuantity) = Point2(cos(angle), sin(angle))
-function project_line_onto_unit_circle(line)
+
+function project_line_onto_unit_circle(line::Tuple)
     angle = line[2]
     return SVector{3}([ustrip(pxl, line[1]), ustrip(rad, cos(angle)), ustrip(rad, sin(angle))])
+end
+
+function extend_covariance(cov::AbstractMatrix{<:Real})
+    n = convert(Int64, size(cov, 1) / 2)
+    cov_ext = zeros(3n, 3n)
+    for i in 1:n
+        cov_ext[3*(i-1)+1:3*(i-1)+2, 3*(i-1)+1:3*(i-1)+2] = cov[2*(i-1)+1:2*(i-1)+2, 2*(i-1)+1:2*(i-1)+2]
+        cov_ext[3i, 3i] = cov[2i, 2i]
+    end
+    return cov_ext
 end
