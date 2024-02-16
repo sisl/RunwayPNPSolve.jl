@@ -127,7 +127,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     # @info typeof(res)
     loc = XYZ(res.u[1:3]*m)
     rot = res.u[4:6]
-    @info loss(vcat(ustrip.(m, loc), rot), ps)
+    # @info loss(vcat(ustrip.(m, loc), rot), ps)
     loc, rot
 end
 
