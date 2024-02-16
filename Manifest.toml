@@ -1371,7 +1371,7 @@ uuid = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
 version = "2.4.4"
 
 [[deps.LsqPnP]]
-deps = ["ComponentArrays", "CoordinateTransformations", "ForwardDiff", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "IntervalSets", "LinearAlgebra", "ReTest", "Roots", "Rotations", "RunwayLib", "SimpleNonlinearSolve", "StaticArrays", "StatsBase", "Tau", "Unitful"]
+deps = ["ComponentArrays", "CoordinateTransformations", "ForwardDiff", "Geodesy", "GeodesyXYZExt", "GeometryBasics", "IntervalSets", "LinearAlgebra", "NonlinearSolve", "ReTest", "Roots", "Rotations", "RunwayLib", "SimpleNonlinearSolve", "StaticArrays", "StatsBase", "Tau", "Unitful"]
 path = "LsqPnP"
 uuid = "448f7bbe-c51f-47ba-87ef-d1481ee1c501"
 version = "0.1.0"
