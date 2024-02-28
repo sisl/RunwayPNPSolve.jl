@@ -78,7 +78,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     initial_guess = MVector{3}(ustrip.(m, initial_guess))
     ps = (; cam_rot, world_pts, measurements, measured_lines, runway_pts)
     prob = NonlinearLeastSquaresProblem(loss_no_α, initial_guess, ps)
-    res = solve(prob, solver; maxiters=100_000, abstol=1e-5)
+    res = solve(prob, solver; maxiters=1_000, abstol=1e-2)
     @assert res.retcode == ReturnCode.Success res
     if !(:α in components)
         return XYZ(res.u*m)
@@ -88,7 +88,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     new_initial_guess = XYZ(res.u*m)
     new_initial_guess = MVector{3}(ustrip.(m, new_initial_guess))
     prob = NonlinearLeastSquaresProblem(loss, new_initial_guess, ps)
-    res = solve(prob, solver; maxiters=100_000, abstol=1e-5)
+    res = solve(prob, solver; maxiters=1_000, abstol=1e-2)
     @assert res.retcode == ReturnCode.Success res
     return XYZ(res.u*m)
 end
@@ -155,7 +155,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
             res_lines = let 
                 measurements_ = SVector(flatten(p.(measured_lines))...)
                 simulated_lines_ = SVector(flatten(p.(simulated_lines))...)
-                res = measurements_ - simulated_lines_
+                res = (measurements_ - simulated_lines_)  # .* repeat([0;1;1], 2)
                 inv_weights \ res
             end
             for elem in res_lines
@@ -171,8 +171,9 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     initial_guess = MVector{6}(vcat(ustrip.(m, initial_guess_loc), initial_guess_rot))
     ps = (; world_pts, measurements, measured_lines, runway_pts)
     prob = NonlinearLeastSquaresProblem(loss_no_α, initial_guess, ps)
-    res = solve(prob, solver; maxiters=100_000, abstol=1e-5)
-    @assert res.retcode == ReturnCode.Success res
+    maxiters = (:α in components ? 10_000 : 1_000)
+    res = solve(prob, solver; maxiters, abstol=1e-2)
+    @assert res.retcode == ReturnCode.Success "$((res, res.retcode))"
     # @info loss(copy(res.u), ps)
     # @info typeof(res)
     loc = XYZ(res.u[1:3]*m)
@@ -185,8 +186,8 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     # Run with edges with good initial guess
     new_initial_guess = vcat(ustrip.(m, loc), rot)
     prob = NonlinearLeastSquaresProblem(loss, new_initial_guess, ps)
-    res = solve(prob, solver; maxiters=100_000, abstol=1e-5)
-    @assert res.retcode == ReturnCode.Success res
+    res = solve(prob, solver; maxiters=1_000, abstol=1e-2)
+    @assert res.retcode == ReturnCode.Success "$((res, res.retcode))"
     loc = XYZ(res.u[1:3]*m)
     rot = res.u[4:6]
     return loc, rot
