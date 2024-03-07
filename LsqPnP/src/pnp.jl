@@ -42,7 +42,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
             cov_ext = extend_covariance(lines_covariance)
             inv_weights = cholesky(cov_ext).U'
             # Project lines
-            simulated_lines = project_line.([CamTransform(cam_rot, XYZ(loc*m))], [ImgProj(0 * pxl, 0 * pxl)], world_pts_lines)
+            simulated_lines = project_line.([CamTransform(cam_rot, XYZ(loc*m))], [ImgProj(0 * pxl, -180 * pxl)], world_pts_lines)
             p = project_line_onto_unit_circle
             res_lines = let 
                 measurements_ = SVector(flatten(p.(measured_lines))...)
@@ -81,6 +81,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     res = solve(prob, solver; maxiters=1_000, abstol=1e-2)
     @assert res.retcode == ReturnCode.Success res
     # println(res)
+    # println()
     return isnothing(cam_rot) ? (XYZ(res.u[1:3]*m), res.u[4:6]) : XYZ(res.u*m)
 end
 
