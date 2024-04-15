@@ -33,7 +33,7 @@ const CamTransform = AffineMap
 
 function project(cam_pose::CamTransform{<:Rotation{3}, <:XYZ{<:WithUnits(m)}},
                  world_point::XYZ{<:WithUnits(m)})::ImgProj
-    scale = let focal_length = 25mm, pixel_size = 0.00345mm / 1pxl
+    scale = let focal_length = 25mm, pixel_size = 0.00349985mm / 1pxl
         focal_length / pixel_size
     end
     cam_transform = cameramap(Val(1), scale) ∘ inv(cam_pose)  # first axis aligned with direction of view
