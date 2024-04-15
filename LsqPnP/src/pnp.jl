@@ -22,7 +22,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
 
     loss(pose, (; cam_rot, world_pts, measurements, measured_lines, runway_pts, use_lines)) = begin
         loc = pose[1:3]
-        cam_rot = isnothing(cam_rot) ? RotXYZ(roll=pose[4], pitch=pose[5], yaw=pose[6]) : cam_rot
+        cam_rot = isnothing(cam_rot) ? RotZYX(roll=pose[4], pitch=pose[5], yaw=pose[6]) : cam_rot
         simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts)
         results = []
         # process points
