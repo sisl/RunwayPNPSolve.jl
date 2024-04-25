@@ -32,10 +32,18 @@ cameramap(::Val{N}, scale::Number) where {N} =
 const CamTransform = AffineMap
 
 function project(cam_pose::CamTransform{<:Rotation{3}, <:XYZ{<:WithUnits(m)}},
-                 world_point::XYZ{<:WithUnits(m)})::ImgProj
-    scale = let focal_length = 25mm, pixel_size = 0.00341975024230182mm / 1pxl
-        focal_length / pixel_size
+                 world_point::XYZ{<:WithUnits(m)},
+                 scale = nothing)::ImgProj
+    # Experimental Changes with No Testing; May break code
+    # TODO: Remove this comment if everything works.
+    if isnothing(scale)
+        focal_length = 25mm
+        pixel_size = 0.00341975024230182mm / 1pxl
+        scale = focal_length / pixel_size
     end
+    # scale = let focal_length = 25mm, pixel_size = 0.00341975024230182mm / 1pxl
+    #     focal_length / pixel_size
+    # end
     cam_transform = cameramap(Val(1), scale) ∘ inv(cam_pose)  # first axis aligned with direction of view
     orient_coord_sys =  LinearMap([-1 0 ; 0 1])  # flip x, leave y
     transform = (ImgProj ∘ orient_coord_sys ∘ cam_transform)
