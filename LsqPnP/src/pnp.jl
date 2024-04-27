@@ -16,6 +16,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
              initial_guess_rot::AbstractVector{<:Real} = [0.0, 0.0, 0.0], # roll, pitch, yaw (radians)
              components=[:x, :y],
              solver=SimpleNewtonRaphson(), #NonlinearSolve.LevenbergMarquardt() #SimpleNewtonRaphson()
+             project_scale=nothing # Project function scale factor based on FOV 
              )
     isempty(components) && return initial_guess
     N = length(world_pts); @assert N == length(measurements)
@@ -23,7 +24,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
     loss(pose, (; cam_rot, world_pts, measurements, measured_lines, runway_pts, use_lines)) = begin
         loc = pose[1:3]
         cam_rot = isnothing(cam_rot) ? RotZYX(roll=pose[4], pitch=pose[5], yaw=pose[6]) : cam_rot
-        simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts)
+        simulated_projections = project.([CamTransform(cam_rot, XYZ(loc*m))], world_pts, project_scale)
         results = []
         # process points
         if (:x in components || :y in components)
@@ -42,7 +43,7 @@ function pnp(world_pts::AbstractVector{<:XYZ{<:WithUnits(m)}},
             cov_ext = extend_covariance(lines_covariance)
             inv_weights = cholesky(cov_ext).U'
             # Project lines
-            simulated_lines = project_line.([CamTransform(cam_rot, XYZ(loc*m))], [ImgProj(-2048 * pxl, 0 * pxl)], world_pts_lines)
+            simulated_lines = project_line.([CamTransform(cam_rot, XYZ(loc*m))], [ImgProj(-2048 * pxl, 0 * pxl)], world_pts_lines, project_scale)
             p = project_line_onto_unit_circle
             res_lines = let 
                 measurements_ = SVector(flatten(p.(measured_lines))...)
