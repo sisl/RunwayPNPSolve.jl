@@ -69,8 +69,9 @@ end
 
 function project_line(cam_pose::CamTransform{<:Rotation{3}, <:XYZ{<:WithUnits(m)}},
                       img_reference_point::ImgProj,
-                      world_point_tpl::NTuple{2, XYZ{<:WithUnits(m)}})
-    end_points = project.([cam_pose], world_point_tpl)
+                      world_point_tpl::NTuple{2, XYZ{<:WithUnits(m)}},
+                      scale = nothing)
+    end_points = project.([cam_pose], world_point_tpl, scale)
     return compute_rho_theta(end_points[1], end_points[2], img_reference_point)
 end
 
